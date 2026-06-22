@@ -1,7 +1,5 @@
 """Tests for otel_metrics.config."""
 
-import os
-
 import pytest
 from pydantic import ValidationError
 
