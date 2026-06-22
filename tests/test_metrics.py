@@ -78,7 +78,9 @@ class TestMetricUnit:
 
 class TestCounter:
     def test_inc_default(self, metrics):
-        counter = metrics.counter(SampleMetrics.REQUEST_COUNT, description="Total requests")
+        counter = metrics.counter(
+            SampleMetrics.REQUEST_COUNT, description="Total requests"
+        )
         # Should not raise
         counter.inc()
 
@@ -107,7 +109,9 @@ class TestCounter:
 class TestHistogram:
     def test_record(self, metrics):
         hist = metrics.histogram(
-            SampleMetrics.PAYLOAD_SIZE, description="Payload bytes", unit=MetricUnit.BYTES
+            SampleMetrics.PAYLOAD_SIZE,
+            description="Payload bytes",
+            unit=MetricUnit.BYTES,
         )
         hist.record(1024)
 
@@ -221,7 +225,10 @@ class TestMetricsFactory:
         assert isinstance(timer, Timer)
 
     def test_prefix_applied(self, prefixed_metrics):
-        assert prefixed_metrics._full_name(SampleMetrics.REQUEST_COUNT) == "my-service.request_count"
+        assert (
+            prefixed_metrics._full_name(SampleMetrics.REQUEST_COUNT)
+            == "my-service.request_count"
+        )
 
     def test_no_prefix(self, metrics):
         assert metrics._full_name(SampleMetrics.REQUEST_COUNT) == "request_count"

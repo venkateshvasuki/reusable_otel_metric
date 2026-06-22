@@ -11,13 +11,20 @@ from typing import TYPE_CHECKING
 from opentelemetry import metrics as otel_metrics
 from opentelemetry.metrics import CallbackOptions, Observation
 from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.metrics.export import MetricExporter, PeriodicExportingMetricReader
+from opentelemetry.sdk.metrics.export import (
+    MetricExporter,
+    PeriodicExportingMetricReader,
+)
 from opentelemetry.util.types import Attributes
 
 from otel_metrics.config import OtelConfig, OtelProtocol
 
 if TYPE_CHECKING:
-    from opentelemetry.metrics import Counter as OtelCounter, Histogram as OtelHistogram, Meter
+    from opentelemetry.metrics import (
+        Counter as OtelCounter,
+        Histogram as OtelHistogram,
+        Meter,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -122,7 +129,9 @@ class Metrics:
 
     def counter(self, name: MetricName, description: str = "") -> Counter:
         return Counter(
-            self._meter.create_counter(name=self._full_name(name), description=description)
+            self._meter.create_counter(
+                name=self._full_name(name), description=description
+            )
         )
 
     def histogram(
@@ -150,7 +159,9 @@ class Metrics:
         )
 
     def timer(self, name: MetricName, description: str = "") -> Timer:
-        return Timer(self.histogram(name, description=description, unit=MetricUnit.MILLISECONDS))
+        return Timer(
+            self.histogram(name, description=description, unit=MetricUnit.MILLISECONDS)
+        )
 
 
 def setup_metrics(config: OtelConfig) -> Metrics:

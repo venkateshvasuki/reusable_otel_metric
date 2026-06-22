@@ -23,7 +23,9 @@ class OtelProtocol(StrEnum):
     """OTLP export protocol."""
 
     @staticmethod
-    def _generate_next_value_(name: str, start: int, count: int, last_values: list[str]) -> str:
+    def _generate_next_value_(
+        name: str, start: int, count: int, last_values: list[str]
+    ) -> str:
         return name.replace("_", "/").lower()
 
     HTTP_PROTOBUF = auto()
@@ -45,7 +47,9 @@ class OtelConfig(BaseSettings):
         validation_alias=AliasChoices("endpoint", "OTEL_EXPORTER_OTLP_ENDPOINT"),
     )
     service_name: NonBlankStr = Field(
-        validation_alias=AliasChoices("serviceName", "service_name", "OTEL_SERVICE_NAME"),
+        validation_alias=AliasChoices(
+            "serviceName", "service_name", "OTEL_SERVICE_NAME"
+        ),
     )
     protocol: OtelProtocol = Field(
         default=OtelProtocol.GRPC,
