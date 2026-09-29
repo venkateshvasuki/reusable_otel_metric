@@ -2,7 +2,30 @@
 name = "otel-metrics"
 version = "0.1.0"
 description = "Reusable OpenTelemetry metrics library with simplified instrument wrappers"
+readme = "README.md"
 requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Vasuki Venkatesh" }]
+keywords = [
+    "opentelemetry",
+    "otel",
+    "otlp",
+    "metrics",
+    "tracing",
+    "observability",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: System :: Monitoring",
+    "Typing :: Typed",
+]
 dependencies = [
     "pydantic>=2.0,<3.0",
     "pydantic-settings>=2.1.0",
@@ -11,6 +34,11 @@ dependencies = [
     "opentelemetry-exporter-otlp-proto-http>=1.20,<2.0",
     "opentelemetry-exporter-otlp-proto-grpc>=1.20,<2.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/venkateshvasuki/reusable_otel_metric"
+Repository = "https://github.com/venkateshvasuki/reusable_otel_metric"
+Issues = "https://github.com/venkateshvasuki/reusable_otel_metric/issues"
 
 [dependency-groups]
 dev = [
@@ -24,6 +52,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["otel_metrics"]
+
+[tool.hatch.build.targets.sdist]
+include = ["otel_metrics", "tests", "README.md", "LICENSE"]
 
 [tool.pytest.ini_options]
 addopts = "-v"

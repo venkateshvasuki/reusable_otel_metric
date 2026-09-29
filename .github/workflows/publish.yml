@@ -1,0 +1,80 @@
+name: Publish
+
+# Publishes to PyPI when a merge lands on main. Every merge runs the checks and
+# builds, but the upload is skipped unless the version in pyproject.toml is one
+# PyPI has not seen -- so bumping the version is what actually cuts a release.
+#
+# Authentication uses PyPI Trusted Publishing (OIDC), so no API token is stored
+# in this repo -- see the "Releasing" section of the README for the one-time
+# PyPI setup.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Index to publish to
+        type: choice
+        options: [testpypi, pypi]
+        default: testpypi
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      is_new: ${{ steps.version.outputs.is_new }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+
+      - run: uv sync
+
+      - run: uv run pytest
+
+      - run: uv run ruff check .
+
+      - name: Check whether this version is already on PyPI
+        id: version
+        run: |
+          version=$(uv run python -c "import tomllib, pathlib; print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")
+          http_code=$(curl -s -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/otel-metrics/$version/json")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [ "$http_code" = "200" ]; then
+            echo "is_new=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::otel-metrics $version is already on PyPI -- skipping upload"
+          else
+            echo "is_new=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::otel-metrics $version is new -- will publish"
+          fi
+
+      - run: uv build
+
+      - name: Validate distribution metadata
+        run: uv run --with twine twine check dist/*
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    if: github.event_name == 'workflow_dispatch' || needs.build.outputs.is_new == 'true'
+    runs-on: ubuntu-latest
+    environment: ${{ github.event_name == 'push' && 'pypi' || inputs.target }}
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: >-
+            ${{ (github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi')
+                && 'https://test.pypi.org/legacy/' || 'https://upload.pypi.org/legacy/' }}
