@@ -6,6 +6,7 @@ import atexit
 import logging
 
 from opentelemetry import trace
+from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import (
@@ -40,9 +41,14 @@ def build_span_exporter(config: OtelConfig) -> SpanExporter:
     return HttpSpanExporter(endpoint=endpoint, headers=config.headers)
 
 
-def setup_telemetry(config: OtelConfig) -> trace.Tracer:
+def setup_telemetry(
+    config: OtelConfig,
+    *instrumentors: BaseInstrumentor,
+) -> trace.Tracer:
     """Bootstrap the OTel tracing pipeline and return a Tracer.
 
+    Each instrumentor is attached to the provider built here, so callers do
+    not have to reach for the global one or worry about setup ordering.
     Registers an atexit hook to flush pending spans on shutdown.
     """
     exporter = build_span_exporter(config)
@@ -56,6 +62,10 @@ def setup_telemetry(config: OtelConfig) -> trace.Tracer:
 
     atexit.register(provider.shutdown)
     trace.set_tracer_provider(provider)
+
+    for instrumentor in instrumentors:
+        instrumentor.instrument(tracer_provider=provider)
+
     return trace.get_tracer(config.service_name)
 
 

@@ -83,8 +83,25 @@ with tracer.start_as_current_span("my-operation"):
 ```
 
 `setup_telemetry` sets the process-global tracer provider, so call it once at
-startup and before importing anything that captures a tracer. Use
-`build_test_tracer()` for a non-exporting tracer in unit tests.
+startup. Use `build_test_tracer()` for a non-exporting tracer in unit tests.
+
+#### Instrumentors
+
+Pass any `BaseInstrumentor` as a trailing argument and it is attached to the
+provider built here -- no need to reach for the global one:
+
+```python
+from opentelemetry.instrumentation.langchain import LangchainInstrumentor
+
+setup_telemetry(config, LangchainInstrumentor())
+```
+
+Several are fine, and an existing list can be splatted:
+
+```python
+setup_telemetry(config, LangchainInstrumentor(), RequestsInstrumentor())
+setup_telemetry(config, *instrumentors)
+```
 
 ### Testing
 
