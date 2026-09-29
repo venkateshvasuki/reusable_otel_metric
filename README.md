@@ -84,4 +84,33 @@ uv run ruff check .
 uv build
 ```
 
-Produces a wheel in `dist/`.
+Produces a wheel and an sdist in `dist/`.
+
+## Releasing
+
+Publishing happens on merge to `main`. The workflow runs the tests and builds on
+every merge, but only uploads when the `version` in `pyproject.toml` is one PyPI
+has not seen — so **bumping the version is what cuts a release**. Merging
+anything else is a no-op for the index.
+
+To release: bump `version`, open a PR, merge it.
+
+Uploads use [PyPI Trusted Publishing](https://docs.pypi.org/trusted-publishers/),
+so no API token lives in this repo. It needs a one-time setup on each index:
+
+1. On PyPI, go to *Your projects → Publishing* (or *Account → Publishing* for a
+   name that has never been published) and add a GitHub publisher:
+
+   | Field | Value |
+   |-------|-------|
+   | Owner | `venkateshvasuki` |
+   | Repository | `reusable_otel_metric` |
+   | Workflow | `publish.yml` |
+   | Environment | `pypi` |
+
+2. In this repo's *Settings → Environments*, create an environment named `pypi`.
+   Add required reviewers there if releases should need a human approval.
+
+Repeat with an environment named `testpypi` on
+[test.pypi.org](https://test.pypi.org) to use the manual *Run workflow* button,
+which defaults to TestPyPI.
