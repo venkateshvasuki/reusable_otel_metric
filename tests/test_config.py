@@ -112,3 +112,76 @@ class TestResolvedMetricsEndpoint:
             protocol=OtelProtocol.HTTP_PROTOBUF,
         )
         assert config.resolved_metrics_endpoint() == "http://localhost:4318/v1/metrics"
+
+
+class TestResolvedTracesEndpoint:
+    def test_grpc_returns_base_unchanged(self):
+        config = OtelConfig(
+            endpoint="http://localhost:4317",
+            service_name="svc",
+            protocol=OtelProtocol.GRPC,
+        )
+        assert config.resolved_traces_endpoint() == "http://localhost:4317"
+
+    def test_http_appends_v1_traces(self):
+        config = OtelConfig(
+            endpoint="https://api.braintrust.dev/otel",
+            service_name="svc",
+            protocol=OtelProtocol.HTTP_PROTOBUF,
+        )
+        assert (
+            config.resolved_traces_endpoint()
+            == "https://api.braintrust.dev/otel/v1/traces"
+        )
+
+    def test_http_strips_trailing_slash_before_appending(self):
+        config = OtelConfig(
+            endpoint="http://localhost:4318/",
+            service_name="svc",
+            protocol=OtelProtocol.HTTP_PROTOBUF,
+        )
+        assert config.resolved_traces_endpoint() == "http://localhost:4318/v1/traces"
+
+
+class TestHeaders:
+    def test_defaults_to_none(self):
+        config = OtelConfig(endpoint="http://localhost:4317", service_name="svc")
+        assert config.headers is None
+
+    def test_accepts_mapping(self):
+        config = OtelConfig(
+            endpoint="http://localhost:4317",
+            service_name="svc",
+            headers={"x-api-key": "secret"},
+        )
+        assert config.headers == {"x-api-key": "secret"}
+
+    def test_parses_otlp_string_form(self):
+        config = OtelConfig(
+            endpoint="http://localhost:4318",
+            service_name="svc",
+            headers="Authorization=Bearer tok, x-bt-parent=project_id:123",
+        )
+        assert config.headers == {
+            "authorization": "Bearer tok",
+            "x-bt-parent": "project_id:123",
+        }
+
+    def test_url_encoded_values_decoded(self):
+        config = OtelConfig(
+            endpoint="http://localhost:4318",
+            service_name="svc",
+            headers="Authorization=Bearer%20tok",
+        )
+        assert config.headers == {"authorization": "Bearer tok"}
+
+    def test_blank_string_becomes_none(self):
+        config = OtelConfig(
+            endpoint="http://localhost:4317", service_name="svc", headers=""
+        )
+        assert config.headers is None
+
+    def test_from_env_var(self, monkeypatch):
+        monkeypatch.setenv("OTEL_EXPORTER_OTLP_HEADERS", "x-api-key=lsv2_abc")
+        config = OtelConfig(endpoint="http://localhost:4317", service_name="svc")
+        assert config.headers == {"x-api-key": "lsv2_abc"}

@@ -1,6 +1,6 @@
 # otel-metrics
 
-Reusable OpenTelemetry metrics library providing simplified wrappers around OTel metric instruments.
+Reusable OpenTelemetry library: simplified wrappers around OTel metric instruments, plus an OTLP tracing pipeline.
 
 ## Install
 
@@ -57,8 +57,34 @@ timer.record(start)
 | `endpoint` | `OTEL_EXPORTER_OTLP_ENDPOINT` | *(required)* |
 | `service_name` | `OTEL_SERVICE_NAME` | *(required)* |
 | `protocol` | `OTEL_EXPORTER_OTLP_PROTOCOL` | `grpc` |
+| `headers` | `OTEL_EXPORTER_OTLP_HEADERS` | `None` |
 
 Supported protocols: `grpc`, `http/protobuf`.
+
+`headers` accepts either a mapping or the OTLP `key=value,key2=value2` string form,
+and is forwarded to both the metrics and traces exporters. Values may be URL-encoded
+per the OTLP spec, but plain values are accepted too.
+
+### Tracing
+
+```python
+from otel_metrics import OtelConfig, setup_telemetry
+
+config = OtelConfig(
+    endpoint="https://api.braintrust.dev/otel",
+    service_name="my-service",
+    protocol="http/protobuf",
+    headers={"Authorization": "Bearer <key>", "x-bt-parent": "project_id:<id>"},
+)
+tracer = setup_telemetry(config)
+
+with tracer.start_as_current_span("my-operation"):
+    ...
+```
+
+`setup_telemetry` sets the process-global tracer provider, so call it once at
+startup and before importing anything that captures a tracer. Use
+`build_test_tracer()` for a non-exporting tracer in unit tests.
 
 ### Testing
 
