@@ -86,7 +86,3 @@ class OtelConfig(BaseSettings):
         if self.protocol == OtelProtocol.GRPC:
             return base
         return f"{base}/v1/traces"
-
-    def resolved_resource_attributes(self) -> dict[str, str]:
-        """Return the OTel resource attributes identifying this service."""
-        return {"service.name": self.service_name}

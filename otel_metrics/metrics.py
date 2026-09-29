@@ -15,7 +15,7 @@ from opentelemetry.sdk.metrics.export import (
     MetricExporter,
     PeriodicExportingMetricReader,
 )
-from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.util.types import Attributes
 
 from otel_metrics.config import OtelConfig, OtelProtocol
@@ -190,7 +190,7 @@ def setup_metrics(config: OtelConfig) -> Metrics:
     reader = PeriodicExportingMetricReader(exporter)
     provider = MeterProvider(
         metric_readers=[reader],
-        resource=Resource.create(config.resolved_resource_attributes()),
+        resource=Resource.create({SERVICE_NAME: config.service_name}),
     )
     atexit.register(provider.shutdown)
     otel_metrics.set_meter_provider(provider)

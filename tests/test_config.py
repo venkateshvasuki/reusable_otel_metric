@@ -143,12 +143,6 @@ class TestResolvedTracesEndpoint:
         assert config.resolved_traces_endpoint() == "http://localhost:4318/v1/traces"
 
 
-class TestResolvedResourceAttributes:
-    def test_carries_service_name(self):
-        config = OtelConfig(endpoint="http://localhost:4317", service_name="my-svc")
-        assert config.resolved_resource_attributes() == {"service.name": "my-svc"}
-
-
 class TestHeaders:
     def test_defaults_to_none(self):
         config = OtelConfig(endpoint="http://localhost:4317", service_name="svc")

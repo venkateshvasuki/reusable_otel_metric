@@ -6,7 +6,7 @@ import atexit
 import logging
 
 from opentelemetry import trace
-from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import (
     BatchSpanProcessor,
@@ -47,7 +47,7 @@ def setup_telemetry(config: OtelConfig) -> trace.Tracer:
     """
     exporter = build_span_exporter(config)
     provider = TracerProvider(
-        resource=Resource.create(config.resolved_resource_attributes())
+        resource=Resource.create({SERVICE_NAME: config.service_name})
     )
     provider.add_span_processor(BatchSpanProcessor(exporter))
 
