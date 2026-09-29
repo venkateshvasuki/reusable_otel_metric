@@ -62,3 +62,9 @@ class OtelConfig(BaseSettings):
         if self.protocol == OtelProtocol.GRPC:
             return base
         return f"{base}/v1/metrics"
+
+    def resolved_traces_endpoint(self) -> str:
+        base = self.endpoint.rstrip("/")
+        if self.protocol == OtelProtocol.GRPC:
+            return base
+        return f"{base}/v1/traces"
