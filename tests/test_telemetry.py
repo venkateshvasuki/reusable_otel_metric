@@ -18,8 +18,14 @@ from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 
+from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
+
 from otel_metrics.config import OtelConfig, OtelProtocol
-from otel_metrics.telemetry import build_span_exporter, build_test_tracer
+from otel_metrics.telemetry import (
+    build_span_exporter,
+    build_test_tracer,
+    setup_telemetry,
+)
 
 
 def _config(**overrides) -> OtelConfig:
@@ -125,3 +131,55 @@ class TestBuildTestTracer:
         before = trace.get_tracer_provider()
         build_test_tracer()
         assert trace.get_tracer_provider() is before
+
+
+class _RecordingInstrumentor(BaseInstrumentor):
+    """Captures the provider it was handed. BaseInstrumentor is a per-class
+    singleton, so each test needs its own subclass."""
+
+    calls: list = []
+
+    def instrumentation_dependencies(self):
+        return ()
+
+    def _instrument(self, **kwargs):
+        type(self).calls.append(kwargs.get("tracer_provider"))
+
+    def _uninstrument(self, **kwargs):
+        pass
+
+
+def _fresh(name: str) -> BaseInstrumentor:
+    """A one-shot instrumentor class -- sidesteps the singleton and the
+    already-instrumented guard that would skip a second call."""
+    cls = type(name, (_RecordingInstrumentor,), {"calls": []})
+    return cls()
+
+
+class TestInstrumentors:
+    def test_instrumentor_receives_the_provider_built_here(self, collector):
+        instrumentor = _fresh("OneInstrumentor")
+        config = _config(endpoint=f"http://127.0.0.1:{collector.server_address[1]}")
+
+        setup_telemetry(config, instrumentor)
+
+        provider = type(instrumentor).calls[0]
+        assert provider is not None
+        assert provider.resource.attributes[SERVICE_NAME] == "trace-svc"
+
+    def test_every_instrumentor_is_attached(self, collector):
+        first, second = _fresh("FirstInstrumentor"), _fresh("SecondInstrumentor")
+        config = _config(endpoint=f"http://127.0.0.1:{collector.server_address[1]}")
+
+        setup_telemetry(config, first, second)
+
+        assert len(type(first).calls) == 1
+        assert len(type(second).calls) == 1
+
+    def test_default_attaches_nothing(self, collector):
+        instrumentor = _fresh("UnusedInstrumentor")
+        config = _config(endpoint=f"http://127.0.0.1:{collector.server_address[1]}")
+
+        setup_telemetry(config)
+
+        assert type(instrumentor).calls == []
