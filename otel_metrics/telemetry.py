@@ -32,13 +32,13 @@ def build_span_exporter(config: OtelConfig) -> SpanExporter:
             OTLPSpanExporter as GrpcSpanExporter,
         )
 
-        return GrpcSpanExporter(endpoint=endpoint, headers=config.headers)
+        return GrpcSpanExporter(endpoint=endpoint, headers=config.resolved_headers())
 
     from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
         OTLPSpanExporter as HttpSpanExporter,
     )
 
-    return HttpSpanExporter(endpoint=endpoint, headers=config.headers)
+    return HttpSpanExporter(endpoint=endpoint, headers=config.resolved_headers())
 
 
 def setup_telemetry(

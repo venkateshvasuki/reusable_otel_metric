@@ -1,6 +1,6 @@
 [project]
 name = "otel-metrics"
-version = "0.2.0"
+version = "0.3.0"
 description = "Reusable OpenTelemetry metrics and tracing library with simplified instrument wrappers"
 readme = "README.md"
 requires-python = ">=3.11"

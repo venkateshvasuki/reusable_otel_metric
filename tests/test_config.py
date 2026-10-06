@@ -147,6 +147,7 @@ class TestHeaders:
     def test_defaults_to_none(self):
         config = OtelConfig(endpoint="http://localhost:4317", service_name="svc")
         assert config.headers is None
+        assert config.resolved_headers() is None
 
     def test_accepts_mapping(self):
         config = OtelConfig(
@@ -154,7 +155,7 @@ class TestHeaders:
             service_name="svc",
             headers={"x-api-key": "secret"},
         )
-        assert config.headers == {"x-api-key": "secret"}
+        assert config.resolved_headers() == {"x-api-key": "secret"}
 
     def test_parses_otlp_string_form(self):
         config = OtelConfig(
@@ -162,7 +163,7 @@ class TestHeaders:
             service_name="svc",
             headers="Authorization=Bearer tok, x-bt-parent=project_id:123",
         )
-        assert config.headers == {
+        assert config.resolved_headers() == {
             "authorization": "Bearer tok",
             "x-bt-parent": "project_id:123",
         }
@@ -173,7 +174,7 @@ class TestHeaders:
             service_name="svc",
             headers="Authorization=Bearer%20tok",
         )
-        assert config.headers == {"authorization": "Bearer tok"}
+        assert config.resolved_headers() == {"authorization": "Bearer tok"}
 
     def test_blank_string_becomes_none(self):
         config = OtelConfig(
@@ -184,4 +185,29 @@ class TestHeaders:
     def test_from_env_var(self, monkeypatch):
         monkeypatch.setenv("OTEL_EXPORTER_OTLP_HEADERS", "x-api-key=lsv2_abc")
         config = OtelConfig(endpoint="http://localhost:4317", service_name="svc")
-        assert config.headers == {"x-api-key": "lsv2_abc"}
+        assert config.resolved_headers() == {"x-api-key": "lsv2_abc"}
+
+
+class TestHeadersAreMasked:
+    @staticmethod
+    def _config() -> OtelConfig:
+        return OtelConfig(
+            endpoint="http://localhost:4317",
+            service_name="svc",
+            headers="Authorization=Bearer supersecret",
+        )
+
+    def test_repr_hides_the_value(self):
+        printed = repr(self._config())
+        assert "supersecret" not in printed
+        assert "authorization" in printed
+
+    def test_json_dump_hides_the_value(self):
+        dumped = self._config().model_dump_json()
+        assert "supersecret" not in dumped
+        assert "authorization" in dumped
+
+    def test_resolved_headers_returns_the_value(self):
+        assert self._config().resolved_headers() == {
+            "authorization": "Bearer supersecret"
+        }

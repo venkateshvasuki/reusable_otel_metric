@@ -6,7 +6,13 @@ from enum import StrEnum, auto
 from typing import Annotated
 
 from opentelemetry.util.re import parse_env_headers
-from pydantic import AfterValidator, AliasChoices, BeforeValidator, Field
+from pydantic import (
+    AfterValidator,
+    AliasChoices,
+    BeforeValidator,
+    Field,
+    SecretStr,
+)
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -29,7 +35,10 @@ def _parse_headers(value: object) -> object:
 
 NonBlankStr = Annotated[str, AfterValidator(_validate_non_blank)]
 # validator sits on the optional union so a blank value can resolve to None
-HeaderMap = Annotated[dict[str, str] | None, NoDecode, BeforeValidator(_parse_headers)]
+# SecretStr values keep API keys out of repr() and model_dump_json()
+HeaderMap = Annotated[
+    dict[str, SecretStr] | None, NoDecode, BeforeValidator(_parse_headers)
+]
 
 
 class OtelProtocol(StrEnum):
@@ -79,6 +88,12 @@ class OtelConfig(BaseSettings):
         if self.protocol == OtelProtocol.GRPC:
             return base
         return f"{base}/v1/metrics"
+
+    def resolved_headers(self) -> dict[str, str] | None:
+        """Return the headers with their real values, for the exporter."""
+        if self.headers is None:
+            return None
+        return {key: value.get_secret_value() for key, value in self.headers.items()}
 
     def resolved_traces_endpoint(self) -> str:
         """Return the full traces endpoint URL based on protocol."""

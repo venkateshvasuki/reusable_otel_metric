@@ -179,13 +179,13 @@ def setup_metrics(config: OtelConfig) -> Metrics:
             OTLPMetricExporter as GrpcExporter,
         )
 
-        exporter = GrpcExporter(endpoint=endpoint, headers=config.headers)
+        exporter = GrpcExporter(endpoint=endpoint, headers=config.resolved_headers())
     else:
         from opentelemetry.exporter.otlp.proto.http.metric_exporter import (
             OTLPMetricExporter as HttpExporter,
         )
 
-        exporter = HttpExporter(endpoint=endpoint, headers=config.headers)
+        exporter = HttpExporter(endpoint=endpoint, headers=config.resolved_headers())
 
     reader = PeriodicExportingMetricReader(exporter)
     provider = MeterProvider(
