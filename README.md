@@ -65,6 +65,26 @@ Supported protocols: `grpc`, `http/protobuf`.
 and is forwarded to both the metrics and traces exporters. Values may be URL-encoded
 per the OTLP spec, but plain values are accepted too.
 
+Header values are held as `pydantic.SecretStr`, because they usually carry an API
+key. Printing or dumping the config shows the header names but masks the values:
+
+```python
+config = OtelConfig(
+    endpoint="https://api.braintrust.dev/otel",
+    service_name="my-service",
+    headers="Authorization=Bearer sk-live-123",
+)
+
+print(config.model_dump_json())
+# {"endpoint":"...","headers":{"authorization":"**********"}}
+
+config.resolved_headers()
+# {'authorization': 'Bearer sk-live-123'}
+```
+
+Call `resolved_headers()` when you need the real values. Reading `config.headers`
+gives `SecretStr` objects, not plain strings.
+
 ### Tracing
 
 ```python
