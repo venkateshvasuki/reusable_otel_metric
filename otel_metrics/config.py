@@ -33,12 +33,27 @@ def _parse_headers(value: object) -> object:
     return parsed or None
 
 
+def _parse_tags(value: object) -> object:
+    """Accept a mapping, or the OTLP `key=value,key2=value2` env-var form."""
+    if not isinstance(value, str):
+        return value
+    tags: dict[str, str] = {}
+    for pair in value.split(","):
+        key, sep, tag_value = pair.partition("=")
+        key = key.strip()
+        if sep and key:
+            tags[key] = tag_value.strip()
+    return tags or None
+
+
 NonBlankStr = Annotated[str, AfterValidator(_validate_non_blank)]
 # validator sits on the optional union so a blank value can resolve to None
 # SecretStr values keep API keys out of repr() and model_dump_json()
 HeaderMap = Annotated[
     dict[str, SecretStr] | None, NoDecode, BeforeValidator(_parse_headers)
 ]
+# tags are resource attributes, not credentials, so they stay plain strings
+TagMap = Annotated[dict[str, str] | None, NoDecode, BeforeValidator(_parse_tags)]
 
 
 class OtelProtocol(StrEnum):
@@ -80,6 +95,12 @@ class OtelConfig(BaseSettings):
     headers: HeaderMap = Field(
         default=None,
         validation_alias=AliasChoices("headers", "OTEL_EXPORTER_OTLP_HEADERS"),
+    )
+    tags: TagMap = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "tags", "resource_attributes", "OTEL_RESOURCE_ATTRIBUTES"
+        ),
     )
 
     def resolved_metrics_endpoint(self) -> str:

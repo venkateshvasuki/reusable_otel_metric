@@ -58,6 +58,7 @@ timer.record(start)
 | `service_name` | `OTEL_SERVICE_NAME` | *(required)* |
 | `protocol` | `OTEL_EXPORTER_OTLP_PROTOCOL` | `grpc` |
 | `headers` | `OTEL_EXPORTER_OTLP_HEADERS` | `None` |
+| `tags` | `OTEL_RESOURCE_ATTRIBUTES` | `None` |
 
 Supported protocols: `grpc`, `http/protobuf`.
 
@@ -84,6 +85,20 @@ config.resolved_headers()
 
 Call `resolved_headers()` when you need the real values. Reading `config.headers`
 gives `SecretStr` objects, not plain strings.
+
+`tags` are optional OTel resource attributes attached to every metric and span.
+They accept either a mapping or the OTLP `key=value,key2=value2` string form, and
+the `resource_attributes` alias is also accepted:
+
+```python
+config = OtelConfig(
+    endpoint="https://api.braintrust.dev/otel",
+    service_name="my-service",
+    tags="env=prod,region=us-east-1",
+)
+```
+
+The explicit `service_name` always wins over a `service.name` tag.
 
 ### Tracing
 
