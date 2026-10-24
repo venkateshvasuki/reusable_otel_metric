@@ -8,7 +8,6 @@ from typing import Annotated, TypeVar
 from opentelemetry.util.re import parse_env_headers
 from pydantic import (
     AfterValidator,
-    AliasChoices,
     BeforeValidator,
     Field,
     SecretStr,
@@ -65,26 +64,22 @@ class OtelConfig(BaseSettings):
     )
 
     endpoint: NonBlankStr = Field(
-        validation_alias=AliasChoices("endpoint", "OTEL_EXPORTER_OTLP_ENDPOINT"),
+        validation_alias="OTEL_EXPORTER_OTLP_ENDPOINT",
     )
     service_name: NonBlankStr = Field(
-        validation_alias=AliasChoices(
-            "serviceName", "service_name", "OTEL_SERVICE_NAME"
-        ),
+        validation_alias="OTEL_SERVICE_NAME",
     )
     protocol: OtelProtocol = Field(
         default=OtelProtocol.GRPC,
-        validation_alias=AliasChoices("protocol", "OTEL_EXPORTER_OTLP_PROTOCOL"),
+        validation_alias="OTEL_EXPORTER_OTLP_PROTOCOL",
     )
     headers: Map[SecretStr] = Field(
         default=None,
-        validation_alias=AliasChoices("headers", "OTEL_EXPORTER_OTLP_HEADERS"),
+        validation_alias="OTEL_EXPORTER_OTLP_HEADERS",
     )
     tags: Map[str] = Field(
         default=None,
-        validation_alias=AliasChoices(
-            "tags", "resource_attributes", "OTEL_RESOURCE_ATTRIBUTES"
-        ),
+        validation_alias="OTEL_RESOURCE_ATTRIBUTES",
     )
 
     def resolved_metrics_endpoint(self) -> str:
