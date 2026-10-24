@@ -53,7 +53,9 @@ def setup_telemetry(
     """
     exporter = build_span_exporter(config)
     provider = TracerProvider(
-        resource=Resource.create({SERVICE_NAME: config.service_name})
+        resource=Resource.create(
+            {**(config.tags or {}), SERVICE_NAME: config.service_name}
+        )
     )
     provider.add_span_processor(BatchSpanProcessor(exporter))
 

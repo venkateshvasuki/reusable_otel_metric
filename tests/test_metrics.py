@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.resources import Resource
 
 from otel_metrics.config import OtelConfig, OtelProtocol
 from otel_metrics.metrics import (
@@ -276,3 +277,23 @@ class TestSetupMetrics:
             result = setup_metrics(config)
         assert isinstance(result, Metrics)
         assert result._prefix == "test-svc"
+
+    def test_tags_included_in_resource(self):
+        config = OtelConfig(
+            endpoint="http://localhost:4318",
+            service_name="test-svc",
+            tags="env=prod,region=eu",
+        )
+        with (
+            patch("otel_metrics.metrics.atexit.register"),
+            patch(
+                "otel_metrics.metrics.Resource.create",
+                side_effect=Resource.create,
+            ) as create,
+        ):
+            setup_metrics(config)
+        assert create.call_args.args[0] == {
+            "env": "prod",
+            "region": "eu",
+            "service.name": "test-svc",
+        }

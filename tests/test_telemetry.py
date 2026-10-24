@@ -156,6 +156,33 @@ def _fresh(name: str) -> BaseInstrumentor:
     return cls()
 
 
+class TestResourceTags:
+    def test_tags_reach_the_provider_resource(self, collector):
+        instrumentor = _fresh("TagInstrumentor")
+        config = _config(
+            endpoint=f"http://127.0.0.1:{collector.server_address[1]}",
+            tags="env=prod,region=eu",
+        )
+
+        setup_telemetry(config, instrumentor)
+
+        attributes = type(instrumentor).calls[0].resource.attributes
+        assert attributes["env"] == "prod"
+        assert attributes["region"] == "eu"
+
+    def test_explicit_service_name_wins_over_a_tag(self, collector):
+        instrumentor = _fresh("OverrideInstrumentor")
+        config = _config(
+            endpoint=f"http://127.0.0.1:{collector.server_address[1]}",
+            tags="service.name=sneaky",
+        )
+
+        setup_telemetry(config, instrumentor)
+
+        attributes = type(instrumentor).calls[0].resource.attributes
+        assert attributes[SERVICE_NAME] == "trace-svc"
+
+
 class TestInstrumentors:
     def test_instrumentor_receives_the_provider_built_here(self, collector):
         instrumentor = _fresh("OneInstrumentor")

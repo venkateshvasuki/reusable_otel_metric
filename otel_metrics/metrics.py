@@ -190,7 +190,9 @@ def setup_metrics(config: OtelConfig) -> Metrics:
     reader = PeriodicExportingMetricReader(exporter)
     provider = MeterProvider(
         metric_readers=[reader],
-        resource=Resource.create({SERVICE_NAME: config.service_name}),
+        resource=Resource.create(
+            {**(config.tags or {}), SERVICE_NAME: config.service_name}
+        ),
     )
     atexit.register(provider.shutdown)
     otel_metrics.set_meter_provider(provider)

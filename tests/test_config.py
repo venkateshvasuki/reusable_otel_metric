@@ -188,6 +188,59 @@ class TestHeaders:
         assert config.resolved_headers() == {"x-api-key": "lsv2_abc"}
 
 
+class TestTags:
+    def test_defaults_to_none(self):
+        config = OtelConfig(endpoint="http://localhost:4317", service_name="svc")
+        assert config.tags is None
+
+    def test_parses_otlp_string_form(self):
+        config = OtelConfig(
+            endpoint="http://localhost:4317",
+            service_name="svc",
+            tags="env=prod, region=us-east-1",
+        )
+        assert config.tags == {"env": "prod", "region": "us-east-1"}
+
+    def test_preserves_key_case(self):
+        config = OtelConfig(
+            endpoint="http://localhost:4317", service_name="svc", tags="Env=Prod"
+        )
+        assert config.tags == {"Env": "Prod"}
+
+    def test_blank_string_becomes_none(self):
+        config = OtelConfig(
+            endpoint="http://localhost:4317", service_name="svc", tags=""
+        )
+        assert config.tags is None
+
+    def test_from_env_var(self, monkeypatch):
+        monkeypatch.setenv("OTEL_RESOURCE_ATTRIBUTES", "env=prod,region=eu")
+        config = OtelConfig(endpoint="http://localhost:4317", service_name="svc")
+        assert config.tags == {"env": "prod", "region": "eu"}
+
+    def test_resource_attributes_alias(self):
+        config = OtelConfig(
+            endpoint="http://localhost:4317",
+            service_name="svc",
+            resource_attributes="env=prod",
+        )
+        assert config.tags == {"env": "prod"}
+
+    def test_rejects_mapping(self):
+        with pytest.raises(ValidationError, match="key=value"):
+            OtelConfig(
+                endpoint="http://localhost:4317",
+                service_name="svc",
+                tags={"env": "prod"},
+            )
+
+    def test_rejects_malformed_pair(self):
+        with pytest.raises(ValidationError, match="key=value"):
+            OtelConfig(
+                endpoint="http://localhost:4317", service_name="svc", tags="env"
+            )
+
+
 class TestHeadersAreMasked:
     @staticmethod
     def _config() -> OtelConfig:

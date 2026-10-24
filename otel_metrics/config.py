@@ -12,6 +12,7 @@ from pydantic import (
     BeforeValidator,
     Field,
     SecretStr,
+    field_validator,
 )
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
@@ -81,6 +82,30 @@ class OtelConfig(BaseSettings):
         default=None,
         validation_alias=AliasChoices("headers", "OTEL_EXPORTER_OTLP_HEADERS"),
     )
+    tags: Annotated[dict[str, str] | None, NoDecode] = Field(
+        default=None,
+        validation_alias=AliasChoices(
+            "tags", "resource_attributes", "OTEL_RESOURCE_ATTRIBUTES"
+        ),
+    )
+
+    @field_validator("tags", mode="before")
+    @classmethod
+    def _validate_tags(cls, value: object) -> object:
+        """Parse the OTLP `key=value,key2=value2` string form, strictly."""
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise ValueError("tags must be a comma-separated key=value string")
+        if not value.strip():
+            return None
+        tags: dict[str, str] = {}
+        for pair in value.split(","):
+            key, sep, tag_value = pair.partition("=")
+            if not sep or not key.strip():
+                raise ValueError("tags must be comma-separated key=value pairs")
+            tags[key.strip()] = tag_value.strip()
+        return tags or None
 
     def resolved_metrics_endpoint(self) -> str:
         """Return the full metrics endpoint URL based on protocol."""
