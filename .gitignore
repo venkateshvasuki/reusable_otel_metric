@@ -11,4 +11,5 @@ dist/
 *.db
 .env
 .env.*
+.webui_secret_key
 .DS_Store
