@@ -59,16 +59,18 @@ class OtelConfig(BaseSettings):
     """
 
     model_config = SettingsConfigDict(
+        env_prefix="OTEL_",
         extra="ignore",
         populate_by_name=True,
     )
 
+    # Fields without a validation_alias resolve to <env_prefix><FIELD_NAME>, so
+    # `service_name` picks up OTEL_SERVICE_NAME; the OTLP names that don't fit
+    # the prefix keep explicit env-var aliases.
     endpoint: NonBlankStr = Field(
         validation_alias="OTEL_EXPORTER_OTLP_ENDPOINT",
     )
-    service_name: NonBlankStr = Field(
-        validation_alias="OTEL_SERVICE_NAME",
-    )
+    service_name: NonBlankStr
     protocol: OtelProtocol = Field(
         default=OtelProtocol.GRPC,
         validation_alias="OTEL_EXPORTER_OTLP_PROTOCOL",
