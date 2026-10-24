@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from enum import StrEnum, auto
-from typing import Annotated
+from typing import Annotated, TypeVar
 
 from opentelemetry.util.re import parse_env_headers
 from pydantic import (
@@ -12,7 +12,6 @@ from pydantic import (
     BeforeValidator,
     Field,
     SecretStr,
-    field_validator,
 )
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
@@ -24,7 +23,7 @@ def _validate_non_blank(value: str) -> str:
     return stripped
 
 
-def _parse_headers(value: object) -> object:
+def _parse_env_map(value: object) -> object:
     """Accept a mapping, or the OTLP `key=value,key2=value2` env-var form."""
     if not isinstance(value, str):
         return value
@@ -35,11 +34,10 @@ def _parse_headers(value: object) -> object:
 
 
 NonBlankStr = Annotated[str, AfterValidator(_validate_non_blank)]
+V = TypeVar("V")
 # validator sits on the optional union so a blank value can resolve to None
 # SecretStr values keep API keys out of repr() and model_dump_json()
-HeaderMap = Annotated[
-    dict[str, SecretStr] | None, NoDecode, BeforeValidator(_parse_headers)
-]
+Map = Annotated[dict[str, V] | None, NoDecode, BeforeValidator(_parse_env_map)]
 
 
 class OtelProtocol(StrEnum):
@@ -78,34 +76,16 @@ class OtelConfig(BaseSettings):
         default=OtelProtocol.GRPC,
         validation_alias=AliasChoices("protocol", "OTEL_EXPORTER_OTLP_PROTOCOL"),
     )
-    headers: HeaderMap = Field(
+    headers: Map[SecretStr] = Field(
         default=None,
         validation_alias=AliasChoices("headers", "OTEL_EXPORTER_OTLP_HEADERS"),
     )
-    tags: Annotated[dict[str, str] | None, NoDecode] = Field(
+    tags: Map[str] = Field(
         default=None,
         validation_alias=AliasChoices(
             "tags", "resource_attributes", "OTEL_RESOURCE_ATTRIBUTES"
         ),
     )
-
-    @field_validator("tags", mode="before")
-    @classmethod
-    def _validate_tags(cls, value: object) -> object:
-        """Parse the OTLP `key=value,key2=value2` string form, strictly."""
-        if value is None:
-            return None
-        if not isinstance(value, str):
-            raise ValueError("tags must be a comma-separated key=value string")
-        if not value.strip():
-            return None
-        tags: dict[str, str] = {}
-        for pair in value.split(","):
-            key, sep, tag_value = pair.partition("=")
-            if not sep or not key.strip():
-                raise ValueError("tags must be comma-separated key=value pairs")
-            tags[key.strip()] = tag_value.strip()
-        return tags or None
 
     def resolved_metrics_endpoint(self) -> str:
         """Return the full metrics endpoint URL based on protocol."""

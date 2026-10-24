@@ -87,8 +87,9 @@ Call `resolved_headers()` when you need the real values. Reading `config.headers
 gives `SecretStr` objects, not plain strings.
 
 `tags` are optional OTel resource attributes attached to every metric and span.
-They are given in the OTLP `key=value,key2=value2` string form (via `OTEL_RESOURCE_ATTRIBUTES`
-or the `tags`/`resource_attributes` fields), and every entry must be a `key=value` pair:
+They accept a mapping or the OTLP `key=value,key2=value2` string form (via
+`OTEL_RESOURCE_ATTRIBUTES` or the `tags`/`resource_attributes` fields), parsed
+like `headers`:
 
 ```python
 config = OtelConfig(
