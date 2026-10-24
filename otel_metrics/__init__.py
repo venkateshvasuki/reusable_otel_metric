@@ -33,12 +33,13 @@ from otel_metrics.metrics import (
     build_test_metrics,
     setup_metrics,
 )
-from otel_metrics.telemetry import build_test_tracer, setup_telemetry
+from otel_metrics.telemetry import Instrumentor, build_test_tracer, setup_telemetry
 
 __all__ = [
     "Counter",
     "Gauge",
     "Histogram",
+    "Instrumentor",
     "MetricName",
     "MetricUnit",
     "Metrics",

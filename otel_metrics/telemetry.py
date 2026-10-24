@@ -4,11 +4,9 @@ from __future__ import annotations
 
 import atexit
 import logging
+from typing import Protocol
 
 from opentelemetry import trace
-from opentelemetry.instrumentation.instrumentor import (  # type: ignore[attr-defined]
-    BaseInstrumentor,
-)
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import (
@@ -21,7 +19,18 @@ from otel_metrics.config import OtelConfig, OtelProtocol
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["build_span_exporter", "build_test_tracer", "setup_telemetry"]
+__all__ = [
+    "Instrumentor",
+    "build_span_exporter",
+    "build_test_tracer",
+    "setup_telemetry",
+]
+
+
+class Instrumentor(Protocol):
+    """Structural type for the instrumentors attached to the provider."""
+
+    def instrument(self, *, tracer_provider: TracerProvider) -> None: ...
 
 
 def build_span_exporter(config: OtelConfig) -> SpanExporter:
@@ -45,7 +54,7 @@ def build_span_exporter(config: OtelConfig) -> SpanExporter:
 
 def setup_telemetry(
     config: OtelConfig,
-    *instrumentors: BaseInstrumentor,
+    *instrumentors: Instrumentor,
 ) -> trace.Tracer:
     """Bootstrap the OTel tracing pipeline and return a Tracer.
 
