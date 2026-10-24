@@ -5,8 +5,7 @@ name: Publish
 # PyPI has not seen -- so bumping the version is what actually cuts a release.
 #
 # Authentication uses PyPI Trusted Publishing (OIDC), so no API token is stored
-# in this repo -- see the "Releasing" section of the README for the one-time
-# PyPI setup.
+# in this repo.
 
 on:
   push:
