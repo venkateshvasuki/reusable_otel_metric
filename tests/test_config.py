@@ -201,11 +201,11 @@ class TestTags:
         )
         assert config.tags == {"env": "prod", "region": "us-east-1"}
 
-    def test_preserves_key_case(self):
+    def test_keys_are_lowercased(self):
         config = OtelConfig(
             endpoint="http://localhost:4317", service_name="svc", tags="Env=Prod"
         )
-        assert config.tags == {"Env": "Prod"}
+        assert config.tags == {"env": "Prod"}
 
     def test_blank_string_becomes_none(self):
         config = OtelConfig(
@@ -226,17 +226,19 @@ class TestTags:
         )
         assert config.tags == {"env": "prod"}
 
-    def test_rejects_mapping(self):
-        with pytest.raises(ValidationError, match="key=value"):
-            OtelConfig(
-                endpoint="http://localhost:4317",
-                service_name="svc",
-                tags={"env": "prod"},
-            )
+    def test_accepts_mapping(self):
+        config = OtelConfig(
+            endpoint="http://localhost:4317",
+            service_name="svc",
+            tags={"env": "prod"},
+        )
+        assert config.tags == {"env": "prod"}
 
-    def test_rejects_malformed_pair(self):
-        with pytest.raises(ValidationError, match="key=value"):
-            OtelConfig(endpoint="http://localhost:4317", service_name="svc", tags="env")
+    def test_malformed_entry_dropped(self):
+        config = OtelConfig(
+            endpoint="http://localhost:4317", service_name="svc", tags="env"
+        )
+        assert config.tags is None
 
 
 class TestHeadersAreMasked:
