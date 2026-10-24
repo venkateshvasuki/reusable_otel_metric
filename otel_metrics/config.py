@@ -55,7 +55,7 @@ class OtelProtocol(StrEnum):
     GRPC = auto()
 
 
-class OtelConfig(BaseSettings):  # type: ignore[explicit-any]
+class OtelConfig(BaseSettings):
     """Configuration for the OpenTelemetry exporters.
 
     Values are resolved from constructor args, YAML fields, or environment variables.
