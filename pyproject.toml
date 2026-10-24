@@ -43,6 +43,7 @@ Issues = "https://github.com/venkateshvasuki/reusable_otel_metric/issues"
 
 [dependency-groups]
 dev = [
+    "mypy>=1.11",
     "pytest>=8.0",
     "ruff>=0.4",
 ]
@@ -60,3 +61,16 @@ include = ["otel_metrics", "tests", "README.md", "LICENSE"]
 [tool.pytest.ini_options]
 addopts = "-v"
 testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "ANN401"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+disallow_any_explicit = true
+files = ["otel_metrics"]

@@ -6,7 +6,9 @@ import atexit
 import logging
 
 from opentelemetry import trace
-from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
+from opentelemetry.instrumentation.instrumentor import (  # type: ignore[attr-defined]
+    BaseInstrumentor,
+)
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import (
