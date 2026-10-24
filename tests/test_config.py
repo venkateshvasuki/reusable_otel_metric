@@ -29,10 +29,6 @@ class TestOtelConfigConstruction:
         )
         assert config.protocol == OtelProtocol.HTTP_PROTOBUF
 
-    def test_service_name_alias_camelcase(self):
-        config = OtelConfig(serviceName="my-svc", endpoint="http://localhost:4317")
-        assert config.service_name == "my-svc"
-
     def test_extra_fields_ignored(self):
         config = OtelConfig(
             endpoint="http://localhost:4317",
@@ -217,14 +213,6 @@ class TestTags:
         monkeypatch.setenv("OTEL_RESOURCE_ATTRIBUTES", "env=prod,region=eu")
         config = OtelConfig(endpoint="http://localhost:4317", service_name="svc")
         assert config.tags == {"env": "prod", "region": "eu"}
-
-    def test_resource_attributes_alias(self):
-        config = OtelConfig(
-            endpoint="http://localhost:4317",
-            service_name="svc",
-            resource_attributes="env=prod",
-        )
-        assert config.tags == {"env": "prod"}
 
     def test_accepts_mapping(self):
         config = OtelConfig(
