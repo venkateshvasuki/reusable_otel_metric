@@ -88,7 +88,7 @@ gives `SecretStr` objects, not plain strings.
 
 `tags` are optional OTel resource attributes attached to every metric and span.
 They accept a mapping or the OTLP `key=value,key2=value2` string form (via
-`OTEL_RESOURCE_ATTRIBUTES` or the `tags`/`resource_attributes` fields), parsed
+`OTEL_RESOURCE_ATTRIBUTES` or the `tags` field), parsed
 like `headers`:
 
 ```python
