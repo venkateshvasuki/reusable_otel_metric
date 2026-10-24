@@ -193,14 +193,6 @@ class TestTags:
         config = OtelConfig(endpoint="http://localhost:4317", service_name="svc")
         assert config.tags is None
 
-    def test_accepts_mapping(self):
-        config = OtelConfig(
-            endpoint="http://localhost:4317",
-            service_name="svc",
-            tags={"env": "prod", "region": "us-east-1"},
-        )
-        assert config.tags == {"env": "prod", "region": "us-east-1"}
-
     def test_parses_otlp_string_form(self):
         config = OtelConfig(
             endpoint="http://localhost:4317",
@@ -230,9 +222,23 @@ class TestTags:
         config = OtelConfig(
             endpoint="http://localhost:4317",
             service_name="svc",
-            resource_attributes={"env": "prod"},
+            resource_attributes="env=prod",
         )
         assert config.tags == {"env": "prod"}
+
+    def test_rejects_mapping(self):
+        with pytest.raises(ValidationError, match="key=value"):
+            OtelConfig(
+                endpoint="http://localhost:4317",
+                service_name="svc",
+                tags={"env": "prod"},
+            )
+
+    def test_rejects_malformed_pair(self):
+        with pytest.raises(ValidationError, match="key=value"):
+            OtelConfig(
+                endpoint="http://localhost:4317", service_name="svc", tags="env"
+            )
 
 
 class TestHeadersAreMasked:

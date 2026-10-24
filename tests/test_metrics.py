@@ -282,7 +282,7 @@ class TestSetupMetrics:
         config = OtelConfig(
             endpoint="http://localhost:4318",
             service_name="test-svc",
-            tags={"env": "prod", "region": "eu"},
+            tags="env=prod,region=eu",
         )
         with (
             patch("otel_metrics.metrics.atexit.register"),

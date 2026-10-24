@@ -161,7 +161,7 @@ class TestResourceTags:
         instrumentor = _fresh("TagInstrumentor")
         config = _config(
             endpoint=f"http://127.0.0.1:{collector.server_address[1]}",
-            tags={"env": "prod", "region": "eu"},
+            tags="env=prod,region=eu",
         )
 
         setup_telemetry(config, instrumentor)
@@ -174,7 +174,7 @@ class TestResourceTags:
         instrumentor = _fresh("OverrideInstrumentor")
         config = _config(
             endpoint=f"http://127.0.0.1:{collector.server_address[1]}",
-            tags={"service.name": "sneaky"},
+            tags="service.name=sneaky",
         )
 
         setup_telemetry(config, instrumentor)
