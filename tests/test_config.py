@@ -236,9 +236,7 @@ class TestTags:
 
     def test_rejects_malformed_pair(self):
         with pytest.raises(ValidationError, match="key=value"):
-            OtelConfig(
-                endpoint="http://localhost:4317", service_name="svc", tags="env"
-            )
+            OtelConfig(endpoint="http://localhost:4317", service_name="svc", tags="env")
 
 
 class TestHeadersAreMasked:

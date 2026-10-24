@@ -16,6 +16,10 @@ jobs:
 
       - run: uv sync
 
-      - run: uv run pytest
+      - run: uv run ruff format --check .
 
       - run: uv run ruff check .
+
+      - run: uv run mypy
+
+      - run: uv run pytest
