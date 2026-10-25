@@ -20,6 +20,7 @@ from otel_metrics.metrics import (
     Metrics,
     Timer,
     TimestampNS,
+    UpDownCounter,
     build_test_metrics,
     setup_metrics,
 )
@@ -33,6 +34,7 @@ class SampleMetrics(MetricName):
     REQUEST_DURATION_MS = auto()
     QUEUE_DEPTH = auto()
     PAYLOAD_SIZE = auto()
+    ACTIVE_CONNECTIONS = auto()
 
 
 @pytest.fixture
@@ -102,6 +104,34 @@ class TestCounter:
         counter = Counter(mock_counter)
         counter.inc(3, attributes={"key": "val"})
         mock_counter.add.assert_called_once_with(3, attributes={"key": "val"})
+
+
+# --- UpDownCounter -----------------------------------------------------------
+
+
+class TestUpDownCounter:
+    def test_add_default(self, metrics):
+        counter = metrics.up_down_counter(SampleMetrics.ACTIVE_CONNECTIONS)
+        counter.add()
+
+    def test_add_positive_and_negative(self, metrics):
+        counter = metrics.up_down_counter(SampleMetrics.ACTIVE_CONNECTIONS)
+        counter.add(2)
+        counter.add(-1)
+
+    def test_add_with_attributes(self, metrics):
+        counter = metrics.up_down_counter(SampleMetrics.ACTIVE_CONNECTIONS)
+        counter.add(-1, attributes={"pool": "db"})
+
+    def test_add_float(self, metrics):
+        counter = metrics.up_down_counter(SampleMetrics.ACTIVE_CONNECTIONS)
+        counter.add(0.5)
+
+    def test_wraps_otel_up_down_counter(self):
+        mock_counter = MagicMock()
+        counter = UpDownCounter(mock_counter)
+        counter.add(-2, attributes={"key": "val"})
+        mock_counter.add.assert_called_once_with(-2, attributes={"key": "val"})
 
 
 # --- Histogram ---------------------------------------------------------------
@@ -213,6 +243,12 @@ class TestMetricsFactory:
         counter = metrics.counter(SampleMetrics.REQUEST_COUNT, description="desc")
         assert isinstance(counter, Counter)
 
+    def test_up_down_counter_creation(self, metrics):
+        counter = metrics.up_down_counter(
+            SampleMetrics.ACTIVE_CONNECTIONS, description="Active"
+        )
+        assert isinstance(counter, UpDownCounter)
+
     def test_histogram_creation(self, metrics):
         hist = metrics.histogram(SampleMetrics.PAYLOAD_SIZE, unit=MetricUnit.BYTES)
         assert isinstance(hist, Histogram)
@@ -250,6 +286,7 @@ class TestBuildTestMetrics:
         gauge = m.gauge(SampleMetrics.QUEUE_DEPTH)
         gauge.set(5)
         assert gauge.get() == 5.0
+        m.up_down_counter(SampleMetrics.ACTIVE_CONNECTIONS).add(-1)
 
 
 # --- setup_metrics -----------------------------------------------------------

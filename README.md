@@ -25,6 +25,7 @@ from otel_metrics import MetricName, OtelConfig, setup_metrics
 class MyMetrics(MetricName):
     REQUEST_COUNT = auto()
     REQUEST_DURATION_MS = auto()
+    ACTIVE_CONNECTIONS = auto()
 
 # Configure and initialize
 config = OtelConfig(endpoint="http://localhost:4317", service_name="my-service")
@@ -47,6 +48,21 @@ start = TimestampNS.now()
 # ... do work ...
 timer.record(start)
 ```
+
+### Up/down counters
+
+Use an up/down counter for values that rise and fall, such as active connections:
+
+```python
+active = metrics.up_down_counter(
+    MyMetrics.ACTIVE_CONNECTIONS, description="Open connections"
+)
+
+active.add(1)
+active.add(-1)
+```
+
+`add` accepts negative values; the instrument reports the running sum.
 
 ### Configuration
 
