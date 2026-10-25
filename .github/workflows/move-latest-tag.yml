@@ -1,0 +1,25 @@
+name: Move latest tag
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: move-latest-tag
+  cancel-in-progress: true
+
+jobs:
+  move:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Move latest to the new main commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -fa latest "$GITHUB_SHA" -m "Latest main at $GITHUB_SHA"
+          git push origin refs/tags/latest --force

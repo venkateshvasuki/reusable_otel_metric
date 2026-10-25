@@ -227,3 +227,6 @@ git push origin v0.5.0
 Pushing a `v*` tag runs the publish workflow, builds the package, and uploads it
 to PyPI. The build derives the version from the tag with `hatch-vcs`, so the tag
 is the only place the release version lives.
+
+The `latest` tag is a floating tag: every merge to `main` moves it to the new
+commit. Release tags such as `v0.5.0` are immutable and must not be moved.
