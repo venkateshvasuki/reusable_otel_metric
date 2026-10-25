@@ -67,8 +67,11 @@ class UpDownCounter:
     def __init__(self, counter: OtelUpDownCounter) -> None:
         self._counter = counter
 
-    def add(self, value: int | float = 1, attributes: Attributes = None) -> None:
+    def inc(self, value: int | float = 1, attributes: Attributes = None) -> None:
         self._counter.add(value, attributes=attributes)
+
+    def dec(self, value: int | float = 1, attributes: Attributes = None) -> None:
+        self._counter.add(-value, attributes=attributes)
 
 
 class Histogram:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from enum import auto
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 from opentelemetry.sdk.metrics import MeterProvider
@@ -110,28 +110,36 @@ class TestCounter:
 
 
 class TestUpDownCounter:
-    def test_add_default(self, metrics):
+    def test_inc_default(self, metrics):
         counter = metrics.up_down_counter(SampleMetrics.ACTIVE_CONNECTIONS)
-        counter.add()
+        counter.inc()
 
-    def test_add_positive_and_negative(self, metrics):
+    def test_dec_default(self, metrics):
         counter = metrics.up_down_counter(SampleMetrics.ACTIVE_CONNECTIONS)
-        counter.add(2)
-        counter.add(-1)
+        counter.dec()
 
-    def test_add_with_attributes(self, metrics):
+    def test_inc_with_attributes(self, metrics):
         counter = metrics.up_down_counter(SampleMetrics.ACTIVE_CONNECTIONS)
-        counter.add(-1, attributes={"pool": "db"})
+        counter.inc(2, attributes={"pool": "db"})
 
-    def test_add_float(self, metrics):
+    def test_dec_with_attributes(self, metrics):
         counter = metrics.up_down_counter(SampleMetrics.ACTIVE_CONNECTIONS)
-        counter.add(0.5)
+        counter.dec(1, attributes={"pool": "db"})
+
+    def test_inc_and_dec_float(self, metrics):
+        counter = metrics.up_down_counter(SampleMetrics.ACTIVE_CONNECTIONS)
+        counter.inc(0.5)
+        counter.dec(0.5)
 
     def test_wraps_otel_up_down_counter(self):
         mock_counter = MagicMock()
         counter = UpDownCounter(mock_counter)
-        counter.add(-2, attributes={"key": "val"})
-        mock_counter.add.assert_called_once_with(-2, attributes={"key": "val"})
+        counter.inc(2, attributes={"key": "val"})
+        counter.dec(3)
+        assert mock_counter.add.call_args_list == [
+            call(2, attributes={"key": "val"}),
+            call(-3, attributes=None),
+        ]
 
 
 # --- Histogram ---------------------------------------------------------------
@@ -286,7 +294,7 @@ class TestBuildTestMetrics:
         gauge = m.gauge(SampleMetrics.QUEUE_DEPTH)
         gauge.set(5)
         assert gauge.get() == 5.0
-        m.up_down_counter(SampleMetrics.ACTIVE_CONNECTIONS).add(-1)
+        m.up_down_counter(SampleMetrics.ACTIVE_CONNECTIONS).dec()
 
 
 # --- setup_metrics -----------------------------------------------------------

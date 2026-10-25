@@ -58,11 +58,11 @@ active = metrics.up_down_counter(
     MyMetrics.ACTIVE_CONNECTIONS, description="Open connections"
 )
 
-active.add(1)
-active.add(-1)
+active.inc()
+active.dec()
 ```
 
-`add` accepts negative values; the instrument reports the running sum.
+`inc` adds and `dec` subtracts, both taking an optional amount and attributes.
 
 ### Configuration
 
