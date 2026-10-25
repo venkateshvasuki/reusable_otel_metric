@@ -1,15 +1,14 @@
 name: Publish
 
-# Publishes to PyPI when a merge lands on main. Every merge runs the checks and
-# builds, but the upload is skipped unless the version in pyproject.toml is one
-# PyPI has not seen -- so bumping the version is what actually cuts a release.
+# Publishes to PyPI when a v* tag is pushed. The package version is derived
+# from that tag by hatch-vcs, so tagging is what cuts a release.
 #
 # Authentication uses PyPI Trusted Publishing (OIDC), so no API token is stored
 # in this repo.
 
 on:
   push:
-    branches: [main]
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
       target:
@@ -26,6 +25,8 @@ jobs:
       is_new: ${{ steps.version.outputs.is_new }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: astral-sh/setup-uv@v6
 
@@ -39,10 +40,15 @@ jobs:
 
       - run: uv run pytest
 
-      - name: Check whether this version is already on PyPI
+      - run: uv build
+
+      - name: Validate distribution metadata
+        run: uv run --with twine twine check dist/*
+
+      - name: Read built version and check PyPI
         id: version
         run: |
-          version=$(uv run python -c "import tomllib, pathlib; print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")
+          version=$(basename "$(ls dist/otel_metrics-*.whl | head -n1)" | cut -d- -f2)
           http_code=$(curl -s -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/otel-metrics/$version/json")
           echo "version=$version" >> "$GITHUB_OUTPUT"
           if [ "$http_code" = "200" ]; then
@@ -52,11 +58,6 @@ jobs:
             echo "is_new=true" >> "$GITHUB_OUTPUT"
             echo "::notice::otel-metrics $version is new -- will publish"
           fi
-
-      - run: uv build
-
-      - name: Validate distribution metadata
-        run: uv run --with twine twine check dist/*
 
       - uses: actions/upload-artifact@v4
         with:
