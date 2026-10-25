@@ -31,12 +31,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _non_negative(value: int | float) -> int | float:
-    if value < 0:
-        raise ValueError("UpDownCounter values must be non-negative")
-    return value
-
-
 class MetricUnit(StrEnum):
     """Standard metric units."""
 
@@ -74,10 +68,14 @@ class UpDownCounter:
         self._counter = counter
 
     def inc(self, value: int | float = 1, attributes: Attributes = None) -> None:
-        self._counter.add(_non_negative(value), attributes=attributes)
+        if value < 0:
+            raise ValueError("UpDownCounter values must be non-negative")
+        self._counter.add(value, attributes=attributes)
 
     def dec(self, value: int | float = 1, attributes: Attributes = None) -> None:
-        self._counter.add(-_non_negative(value), attributes=attributes)
+        if value < 0:
+            raise ValueError("UpDownCounter values must be non-negative")
+        self._counter.add(-value, attributes=attributes)
 
 
 class Histogram:
