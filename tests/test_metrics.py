@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from enum import auto
 from unittest.mock import MagicMock, call, patch
@@ -112,11 +113,11 @@ class TestCounter:
 class TestUpDownCounter:
     def test_inc_default(self, metrics):
         counter = metrics.up_down_counter(SampleMetrics.ACTIVE_CONNECTIONS)
-        counter.inc()
+        assert counter.inc() is True
 
     def test_dec_default(self, metrics):
         counter = metrics.up_down_counter(SampleMetrics.ACTIVE_CONNECTIONS)
-        counter.dec()
+        assert counter.dec() is True
 
     def test_inc_with_attributes(self, metrics):
         counter = metrics.up_down_counter(SampleMetrics.ACTIVE_CONNECTIONS)
@@ -133,17 +134,17 @@ class TestUpDownCounter:
 
     def test_zero_allowed(self, metrics):
         counter = metrics.up_down_counter(SampleMetrics.ACTIVE_CONNECTIONS)
-        counter.inc(0)
-        counter.dec(0)
+        assert counter.inc(0) is True
+        assert counter.dec(0) is True
 
-    def test_negative_values_rejected(self):
+    def test_negative_values_ignored(self, caplog):
         mock_counter = MagicMock()
         counter = UpDownCounter(mock_counter)
-        with pytest.raises(ValueError, match="non-negative"):
-            counter.inc(-1)
-        with pytest.raises(ValueError, match="non-negative"):
-            counter.dec(-1)
+        with caplog.at_level(logging.WARNING):
+            assert counter.inc(-1) is False
+            assert counter.dec(-1) is False
         assert mock_counter.add.call_args_list == []
+        assert caplog.text.count("ignoring negative UpDownCounter value") == 2
 
     def test_wraps_otel_up_down_counter(self):
         mock_counter = MagicMock()
