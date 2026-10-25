@@ -63,8 +63,7 @@ active.dec()
 ```
 
 `inc` adds and `dec` subtracts, both taking an optional amount and attributes.
-Negative amounts are ignored, logged as a warning, and return `False`; accepted
-updates return `True`.
+Negative amounts raise `ValueError`.
 
 ### Configuration
 

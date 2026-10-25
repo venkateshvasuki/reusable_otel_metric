@@ -67,19 +67,15 @@ class UpDownCounter:
     def __init__(self, counter: OtelUpDownCounter) -> None:
         self._counter = counter
 
-    def inc(self, value: int | float = 1, attributes: Attributes = None) -> bool:
+    def inc(self, value: int | float = 1, attributes: Attributes = None) -> None:
         if value < 0:
-            logger.warning("ignoring negative UpDownCounter value: %s", value)
-            return False
+            raise ValueError("UpDownCounter values must be non-negative")
         self._counter.add(value, attributes=attributes)
-        return True
 
-    def dec(self, value: int | float = 1, attributes: Attributes = None) -> bool:
+    def dec(self, value: int | float = 1, attributes: Attributes = None) -> None:
         if value < 0:
-            logger.warning("ignoring negative UpDownCounter value: %s", value)
-            return False
+            raise ValueError("UpDownCounter values must be non-negative")
         self._counter.add(-value, attributes=attributes)
-        return True
 
 
 class Histogram:
