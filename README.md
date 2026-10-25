@@ -217,16 +217,12 @@ Produces a wheel and an sdist in `dist/`.
 
 ## Releasing
 
-The package version comes from the git tag. To release:
+Set the next version in `release-version.txt` and merge to `main`. The
+`Release on merge` workflow creates the matching `v*` tag and dispatches the
+publish workflow, which builds and uploads that version to PyPI.
 
-```bash
-git tag v0.5.0
-git push origin v0.5.0
-```
+The package version itself comes from the git tag via `hatch-vcs`; the version
+file only tells the automation which tag to create. Bump it for each release.
 
-Pushing a `v*` tag runs the publish workflow, builds the package, and uploads it
-to PyPI. The build derives the version from the tag with `hatch-vcs`, so the tag
-is the only place the release version lives.
-
-The `latest` tag is a floating tag: every merge to `main` moves it to the new
-commit. Release tags such as `v0.5.0` are immutable and must not be moved.
+Release tags are immutable and must not be moved. The `latest` tag is a floating
+tag: every merge to `main` moves it to the new commit.

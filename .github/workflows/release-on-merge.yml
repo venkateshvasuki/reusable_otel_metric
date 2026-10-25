@@ -1,0 +1,64 @@
+name: Release on merge
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: release-on-merge
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read release version
+        id: version
+        run: |
+          version=$(tr -d '[:space:]' < release-version.txt)
+          if ! [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::release-version.txt must contain MAJOR.MINOR.PATCH"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Create the release tag
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
+            echo "::notice::v$VERSION already exists -- leaving it unchanged"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "v$VERSION" "$GITHUB_SHA" -m "Release $VERSION"
+          git push origin "refs/tags/v$VERSION"
+
+      - name: Dispatch the publish workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          http_code=$(curl -s -o /dev/null -w '%{http_code}' "https://pypi.org/pypi/otel-metrics/$VERSION/json")
+          if [ "$http_code" = "200" ]; then
+            echo "::notice::otel-metrics $VERSION is already on PyPI -- skipping publish"
+            exit 0
+          fi
+          for attempt in 1 2 3; do
+            if gh workflow run publish.yml --ref "v$VERSION" -f target=pypi; then
+              exit 0
+            fi
+            echo "::warning::publish dispatch failed (attempt $attempt); retrying"
+            sleep 5
+          done
+          echo "::error::could not dispatch the publish workflow"
+          exit 1
