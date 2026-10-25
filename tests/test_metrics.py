@@ -131,6 +131,20 @@ class TestUpDownCounter:
         counter.inc(0.5)
         counter.dec(0.5)
 
+    def test_zero_allowed(self, metrics):
+        counter = metrics.up_down_counter(SampleMetrics.ACTIVE_CONNECTIONS)
+        counter.inc(0)
+        counter.dec(0)
+
+    def test_negative_values_rejected(self):
+        mock_counter = MagicMock()
+        counter = UpDownCounter(mock_counter)
+        with pytest.raises(ValueError, match="non-negative"):
+            counter.inc(-1)
+        with pytest.raises(ValueError, match="non-negative"):
+            counter.dec(-1)
+        assert mock_counter.add.call_args_list == []
+
     def test_wraps_otel_up_down_counter(self):
         mock_counter = MagicMock()
         counter = UpDownCounter(mock_counter)
