@@ -33,7 +33,6 @@ dependencies = [
     "opentelemetry-sdk>=1.20,<2.0",
     "opentelemetry-exporter-otlp-proto-http>=1.20,<2.0",
     "opentelemetry-exporter-otlp-proto-grpc>=1.20,<2.0",
-    "opentelemetry-instrumentation>=0.40b0",
 ]
 
 [project.urls]
@@ -44,6 +43,7 @@ Issues = "https://github.com/venkateshvasuki/reusable_otel_metric/issues"
 [dependency-groups]
 dev = [
     "mypy>=1.11",
+    "opentelemetry-instrumentation>=0.40b0",
     "pytest>=8.0",
     "ruff>=0.4",
 ]

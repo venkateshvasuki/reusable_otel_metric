@@ -576,7 +576,6 @@ dependencies = [
     { name = "opentelemetry-api" },
     { name = "opentelemetry-exporter-otlp-proto-grpc" },
     { name = "opentelemetry-exporter-otlp-proto-http" },
-    { name = "opentelemetry-instrumentation" },
     { name = "opentelemetry-sdk" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
@@ -585,6 +584,7 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "mypy" },
+    { name = "opentelemetry-instrumentation" },
     { name = "pytest" },
     { name = "ruff" },
 ]
@@ -594,7 +594,6 @@ requires-dist = [
     { name = "opentelemetry-api", specifier = ">=1.20,<2.0" },
     { name = "opentelemetry-exporter-otlp-proto-grpc", specifier = ">=1.20,<2.0" },
     { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.20,<2.0" },
-    { name = "opentelemetry-instrumentation", specifier = ">=0.40b0" },
     { name = "opentelemetry-sdk", specifier = ">=1.20,<2.0" },
     { name = "pydantic", specifier = ">=2.0,<3.0" },
     { name = "pydantic-settings", specifier = ">=2.1.0" },
@@ -603,6 +602,7 @@ requires-dist = [
 [package.metadata.requires-dev]
 dev = [
     { name = "mypy", specifier = ">=1.11" },
+    { name = "opentelemetry-instrumentation", specifier = ">=0.40b0" },
     { name = "pytest", specifier = ">=8.0" },
     { name = "ruff", specifier = ">=0.4" },
 ]

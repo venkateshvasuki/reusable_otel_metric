@@ -3,6 +3,7 @@
 import gzip
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from unittest.mock import MagicMock
 
 import pytest
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
@@ -20,11 +21,14 @@ from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 
+import otel_metrics.telemetry as telemetry_module
 from otel_metrics.config import OtelConfig, OtelProtocol
 from otel_metrics.telemetry import (
     build_span_exporter,
     build_test_tracer,
+    force_flush_telemetry,
     setup_telemetry,
+    shutdown_telemetry,
 )
 
 
@@ -164,11 +168,15 @@ class TestResourceTags:
             tags="env=prod,region=eu",
         )
 
-        setup_telemetry(config, instrumentor)
+        setup_telemetry(config, instrumentor, set_global=False)
 
-        attributes = type(instrumentor).calls[0].resource.attributes
-        assert attributes["env"] == "prod"
-        assert attributes["region"] == "eu"
+        provider = type(instrumentor).calls[0]
+        try:
+            attributes = provider.resource.attributes
+            assert attributes["env"] == "prod"
+            assert attributes["region"] == "eu"
+        finally:
+            provider.shutdown()
 
     def test_explicit_service_name_wins_over_a_tag(self, collector):
         instrumentor = _fresh("OverrideInstrumentor")
@@ -177,10 +185,13 @@ class TestResourceTags:
             tags="service.name=sneaky",
         )
 
-        setup_telemetry(config, instrumentor)
+        setup_telemetry(config, instrumentor, set_global=False)
 
-        attributes = type(instrumentor).calls[0].resource.attributes
-        assert attributes[SERVICE_NAME] == "trace-svc"
+        provider = type(instrumentor).calls[0]
+        try:
+            assert provider.resource.attributes[SERVICE_NAME] == "trace-svc"
+        finally:
+            provider.shutdown()
 
 
 class TestInstrumentors:
@@ -188,25 +199,56 @@ class TestInstrumentors:
         instrumentor = _fresh("OneInstrumentor")
         config = _config(endpoint=f"http://127.0.0.1:{collector.server_address[1]}")
 
-        setup_telemetry(config, instrumentor)
+        setup_telemetry(config, instrumentor, set_global=False)
 
         provider = type(instrumentor).calls[0]
-        assert provider is not None
-        assert provider.resource.attributes[SERVICE_NAME] == "trace-svc"
+        try:
+            assert provider is not None
+            assert provider.resource.attributes[SERVICE_NAME] == "trace-svc"
+        finally:
+            provider.shutdown()
 
     def test_every_instrumentor_is_attached(self, collector):
         first, second = _fresh("FirstInstrumentor"), _fresh("SecondInstrumentor")
         config = _config(endpoint=f"http://127.0.0.1:{collector.server_address[1]}")
 
-        setup_telemetry(config, first, second)
+        setup_telemetry(config, first, second, set_global=False)
 
-        assert len(type(first).calls) == 1
-        assert len(type(second).calls) == 1
+        provider = type(first).calls[0]
+        try:
+            assert len(type(first).calls) == 1
+            assert len(type(second).calls) == 1
+        finally:
+            provider.shutdown()
 
     def test_default_attaches_nothing(self, collector):
         instrumentor = _fresh("UnusedInstrumentor")
         config = _config(endpoint=f"http://127.0.0.1:{collector.server_address[1]}")
 
-        setup_telemetry(config)
+        setup_telemetry(config, set_global=False)
 
         assert type(instrumentor).calls == []
+
+
+class TestTelemetryLifecycle:
+    def test_force_flush_without_provider(self, monkeypatch):
+        monkeypatch.setattr(telemetry_module, "_tracer_provider", None)
+        assert force_flush_telemetry() is True
+
+    def test_shutdown_uses_active_provider(self, monkeypatch):
+        provider = MagicMock()
+        monkeypatch.setattr(telemetry_module, "_tracer_provider", provider)
+
+        shutdown_telemetry()
+
+        provider.force_flush.assert_called_once()
+        provider.shutdown.assert_called_once()
+        assert telemetry_module._tracer_provider is None
+
+    def test_reuses_active_provider(self, monkeypatch):
+        provider = MagicMock()
+        monkeypatch.setattr(telemetry_module, "_tracer_provider", provider)
+
+        setup_telemetry(_config())
+
+        provider.get_tracer.assert_called_once_with("trace-svc")

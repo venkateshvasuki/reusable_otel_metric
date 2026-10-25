@@ -229,6 +229,33 @@ class TestTags:
         assert config.tags is None
 
 
+class TestMetricPrefix:
+    def test_defaults_to_none(self):
+        config = OtelConfig(endpoint="http://localhost:4317", service_name="svc")
+        assert config.metric_prefix is None
+
+    def test_strips_whitespace(self):
+        config = OtelConfig(
+            endpoint="http://localhost:4317",
+            service_name="svc",
+            metric_prefix="  myapp  ",
+        )
+        assert config.metric_prefix == "myapp"
+
+    def test_blank_string_becomes_none(self):
+        config = OtelConfig(
+            endpoint="http://localhost:4317",
+            service_name="svc",
+            metric_prefix="   ",
+        )
+        assert config.metric_prefix is None
+
+    def test_from_env_var(self, monkeypatch):
+        monkeypatch.setenv("OTEL_METRIC_PREFIX", "myapp")
+        config = OtelConfig(endpoint="http://localhost:4317", service_name="svc")
+        assert config.metric_prefix == "myapp"
+
+
 class TestHeadersAreMasked:
     @staticmethod
     def _config() -> OtelConfig:

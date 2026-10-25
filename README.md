@@ -11,7 +11,7 @@ pip install otel-metrics
 Or from a built wheel:
 
 ```bash
-pip install dist/otel_metrics-0.1.0-py3-none-any.whl
+pip install dist/otel_metrics-0.3.0-py3-none-any.whl
 ```
 
 ## Usage
@@ -29,17 +29,28 @@ class MyMetrics(MetricName):
 
 # Configure and initialize
 config = OtelConfig(endpoint="http://localhost:4317", service_name="my-service")
-metrics = setup_metrics(config)
 
-# Create instruments
-counter = metrics.counter(MyMetrics.REQUEST_COUNT, description="Total requests")
-timer = metrics.timer(MyMetrics.REQUEST_DURATION_MS, description="Request latency")
+# setup_metrics returns a context manager that flushes and shuts down on exit
+with setup_metrics(config) as metrics:
+    counter = metrics.counter(MyMetrics.REQUEST_COUNT, description="Total requests")
+    timer = metrics.timer(MyMetrics.REQUEST_DURATION_MS, description="Request latency")
 
-# Record
-counter.inc()
+    counter.inc()
 ```
 
+Calling `setup_metrics` again in the same process reuses the provider it already
+created. Pass `set_global=False` for isolated setups, or inject a provider with
+`setup_metrics(config, meter_provider=provider)` and the library will not shut it
+down.
+
 ### Timing operations
+
+```python
+with timer.time(attributes={"route": "/orders"}):
+    do_work()
+```
+
+For explicit control, record a `TimestampNS` yourself:
 
 ```python
 from otel_metrics import TimestampNS
@@ -63,7 +74,21 @@ active.dec()
 ```
 
 `inc` adds and `dec` subtracts, both taking an optional amount and attributes.
-Negative amounts raise `ValueError`.
+Negative amounts raise `ValueError` for counters and histograms.
+
+### Gauges
+
+A gauge keeps one value per attribute set:
+
+```python
+gauge = metrics.gauge(MyMetrics.QUEUE_DEPTH, description="Queued jobs")
+gauge.set(12, attributes={"queue": "default"})
+gauge.set(3, attributes={"queue": "billing"})
+gauge.get(attributes={"queue": "default"})  # 12.0
+gauge.remove(attributes={"queue": "billing"})
+```
+
+A gauge emits nothing until its first `set`.
 
 ### Configuration
 
@@ -76,8 +101,13 @@ Negative amounts raise `ValueError`.
 | `protocol` | `OTEL_EXPORTER_OTLP_PROTOCOL` | `grpc` |
 | `headers` | `OTEL_EXPORTER_OTLP_HEADERS` | `None` |
 | `tags` | `OTEL_RESOURCE_ATTRIBUTES` | `None` |
+| `metric_prefix` | `OTEL_METRIC_PREFIX` | `None` (no prefix) |
 
 Supported protocols: `grpc`, `http/protobuf`.
+
+`metric_prefix` is optional. When set, instrument names are prefixed with it
+(`myapp.request_count`). It is not derived from `service_name` automatically,
+because the OTel resource already carries `service.name`.
 
 `headers` accepts either a mapping or the OTLP `key=value,key2=value2` string form,
 and is forwarded to both the metrics and traces exporters. Values may be URL-encoded
@@ -135,8 +165,11 @@ with tracer.start_as_current_span("my-operation"):
     ...
 ```
 
-`setup_telemetry` sets the process-global tracer provider, so call it once at
-startup. Use `build_test_tracer()` for a non-exporting tracer in unit tests.
+`setup_telemetry` sets the process-global tracer provider and reuses it on later
+calls. Pass `set_global=False` for isolated setups, or inject a provider with
+`tracer_provider=`. Use `shutdown_telemetry()` (or `force_flush_telemetry()`)
+for explicit lifecycle control. Use `build_test_tracer()` for a non-exporting
+tracer in unit tests.
 
 #### Instrumentors
 
