@@ -25,6 +25,7 @@ if TYPE_CHECKING:
         Counter as OtelCounter,
         Histogram as OtelHistogram,
         Meter,
+        UpDownCounter as OtelUpDownCounter,
     )
 
 logger = logging.getLogger(__name__)
@@ -58,6 +59,23 @@ class Counter:
 
     def inc(self, value: int | float = 1, attributes: Attributes = None) -> None:
         self._counter.add(value, attributes=attributes)
+
+
+class UpDownCounter:
+    """Wrapper around an OpenTelemetry UpDownCounter instrument."""
+
+    def __init__(self, counter: OtelUpDownCounter) -> None:
+        self._counter = counter
+
+    def inc(self, value: int | float = 1, attributes: Attributes = None) -> None:
+        if value < 0:
+            raise ValueError("UpDownCounter values must be non-negative")
+        self._counter.add(value, attributes=attributes)
+
+    def dec(self, value: int | float = 1, attributes: Attributes = None) -> None:
+        if value < 0:
+            raise ValueError("UpDownCounter values must be non-negative")
+        self._counter.add(-value, attributes=attributes)
 
 
 class Histogram:
@@ -132,6 +150,20 @@ class Metrics:
         return Counter(
             self._meter.create_counter(
                 name=self._full_name(name), description=description
+            )
+        )
+
+    def up_down_counter(
+        self,
+        name: MetricName,
+        description: str = "",
+        unit: MetricUnit | str | None = None,
+    ) -> UpDownCounter:
+        return UpDownCounter(
+            self._meter.create_up_down_counter(
+                name=self._full_name(name),
+                description=description,
+                unit=str(unit) if unit else "",
             )
         )
 

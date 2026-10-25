@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from enum import auto
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 from opentelemetry.sdk.metrics import MeterProvider
@@ -20,6 +20,7 @@ from otel_metrics.metrics import (
     Metrics,
     Timer,
     TimestampNS,
+    UpDownCounter,
     build_test_metrics,
     setup_metrics,
 )
@@ -33,6 +34,7 @@ class SampleMetrics(MetricName):
     REQUEST_DURATION_MS = auto()
     QUEUE_DEPTH = auto()
     PAYLOAD_SIZE = auto()
+    ACTIVE_CONNECTIONS = auto()
 
 
 @pytest.fixture
@@ -102,6 +104,56 @@ class TestCounter:
         counter = Counter(mock_counter)
         counter.inc(3, attributes={"key": "val"})
         mock_counter.add.assert_called_once_with(3, attributes={"key": "val"})
+
+
+# --- UpDownCounter -----------------------------------------------------------
+
+
+class TestUpDownCounter:
+    def test_inc_default(self, metrics):
+        counter = metrics.up_down_counter(SampleMetrics.ACTIVE_CONNECTIONS)
+        counter.inc()
+
+    def test_dec_default(self, metrics):
+        counter = metrics.up_down_counter(SampleMetrics.ACTIVE_CONNECTIONS)
+        counter.dec()
+
+    def test_inc_with_attributes(self, metrics):
+        counter = metrics.up_down_counter(SampleMetrics.ACTIVE_CONNECTIONS)
+        counter.inc(2, attributes={"pool": "db"})
+
+    def test_dec_with_attributes(self, metrics):
+        counter = metrics.up_down_counter(SampleMetrics.ACTIVE_CONNECTIONS)
+        counter.dec(1, attributes={"pool": "db"})
+
+    def test_inc_and_dec_float(self, metrics):
+        counter = metrics.up_down_counter(SampleMetrics.ACTIVE_CONNECTIONS)
+        counter.inc(0.5)
+        counter.dec(0.5)
+
+    def test_zero_allowed(self, metrics):
+        counter = metrics.up_down_counter(SampleMetrics.ACTIVE_CONNECTIONS)
+        counter.inc(0)
+        counter.dec(0)
+
+    def test_negative_values_rejected(self):
+        mock_counter = MagicMock()
+        counter = UpDownCounter(mock_counter)
+        with pytest.raises(ValueError, match="non-negative"):
+            counter.inc(-1)
+        with pytest.raises(ValueError, match="non-negative"):
+            counter.dec(-1)
+        assert mock_counter.add.call_args_list == []
+
+    def test_wraps_otel_up_down_counter(self):
+        mock_counter = MagicMock()
+        counter = UpDownCounter(mock_counter)
+        counter.inc(2, attributes={"key": "val"})
+        counter.dec(3)
+        assert mock_counter.add.call_args_list == [
+            call(2, attributes={"key": "val"}),
+            call(-3, attributes=None),
+        ]
 
 
 # --- Histogram ---------------------------------------------------------------
@@ -213,6 +265,12 @@ class TestMetricsFactory:
         counter = metrics.counter(SampleMetrics.REQUEST_COUNT, description="desc")
         assert isinstance(counter, Counter)
 
+    def test_up_down_counter_creation(self, metrics):
+        counter = metrics.up_down_counter(
+            SampleMetrics.ACTIVE_CONNECTIONS, description="Active"
+        )
+        assert isinstance(counter, UpDownCounter)
+
     def test_histogram_creation(self, metrics):
         hist = metrics.histogram(SampleMetrics.PAYLOAD_SIZE, unit=MetricUnit.BYTES)
         assert isinstance(hist, Histogram)
@@ -250,6 +308,7 @@ class TestBuildTestMetrics:
         gauge = m.gauge(SampleMetrics.QUEUE_DEPTH)
         gauge.set(5)
         assert gauge.get() == 5.0
+        m.up_down_counter(SampleMetrics.ACTIVE_CONNECTIONS).dec()
 
 
 # --- setup_metrics -----------------------------------------------------------

@@ -30,6 +30,7 @@ from otel_metrics.metrics import (
     Metrics,
     Timer,
     TimestampNS,
+    UpDownCounter,
     build_test_metrics,
     setup_metrics,
 )
@@ -47,6 +48,7 @@ __all__ = [
     "OtelProtocol",
     "Timer",
     "TimestampNS",
+    "UpDownCounter",
     "build_test_metrics",
     "build_test_tracer",
     "setup_metrics",
