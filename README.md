@@ -11,7 +11,7 @@ pip install otel-metrics
 Or from a built wheel:
 
 ```bash
-pip install dist/otel_metrics-0.3.0-py3-none-any.whl
+pip install dist/otel_metrics-0.4.0-py3-none-any.whl
 ```
 
 ## Usage
