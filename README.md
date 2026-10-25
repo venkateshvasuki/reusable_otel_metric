@@ -11,7 +11,7 @@ pip install otel-metrics
 Or from a built wheel:
 
 ```bash
-pip install dist/otel_metrics-0.4.0-py3-none-any.whl
+pip install dist/otel_metrics-*.whl
 ```
 
 ## Usage
@@ -214,3 +214,16 @@ uv build
 ```
 
 Produces a wheel and an sdist in `dist/`.
+
+## Releasing
+
+The package version comes from the git tag. To release:
+
+```bash
+git tag v0.5.0
+git push origin v0.5.0
+```
+
+Pushing a `v*` tag runs the publish workflow, builds the package, and uploads it
+to PyPI. The build derives the version from the tag with `hatch-vcs`, so the tag
+is the only place the release version lives.
