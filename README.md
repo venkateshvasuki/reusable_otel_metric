@@ -219,7 +219,8 @@ Produces a wheel and an sdist in `dist/`.
 
 Set the next version in `release-version.txt` and merge to `main`. The
 `Release on merge` workflow creates the matching `v*` tag and dispatches the
-publish workflow, which builds and uploads that version to PyPI.
+publish workflow, which builds and uploads that version to PyPI and creates the
+GitHub release.
 
 The package version itself comes from the git tag via `hatch-vcs`; the version
 file only tells the automation which tag to create. Bump it for each release.
