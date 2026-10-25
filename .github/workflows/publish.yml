@@ -70,6 +70,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ github.event_name == 'push' && 'pypi' || inputs.target }}
     permissions:
+      contents: write
       id-token: write
     steps:
       - uses: actions/download-artifact@v4
@@ -82,3 +83,17 @@ jobs:
           repository-url: >-
             ${{ (github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi')
                 && 'https://test.pypi.org/legacy/' || 'https://upload.pypi.org/legacy/' }}
+
+      - name: Create GitHub release
+        if: github.event_name == 'push' || inputs.target == 'pypi'
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          tag="v$VERSION"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "::notice::GitHub release $tag already exists"
+            exit 0
+          fi
+          gh release create "$tag" --title "$tag" --generate-notes --latest
