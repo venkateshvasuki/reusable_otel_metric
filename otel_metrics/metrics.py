@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import atexit
 import logging
+import threading
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from enum import StrEnum
-from typing import TYPE_CHECKING
+from types import TracebackType
+from typing import TYPE_CHECKING, Self
 
 from opentelemetry import metrics as otel_metrics
 from opentelemetry.metrics import CallbackOptions, Observation
@@ -16,7 +20,7 @@ from opentelemetry.sdk.metrics.export import (
     PeriodicExportingMetricReader,
 )
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
-from opentelemetry.util.types import Attributes
+from opentelemetry.util.types import AttributeValue, Attributes
 
 from otel_metrics.config import OtelConfig, OtelProtocol
 
@@ -51,6 +55,11 @@ class MetricName(StrEnum):
     """
 
 
+def _require_non_negative(value: int | float, instrument: str) -> None:
+    if value < 0:
+        raise ValueError(f"{instrument} values must be non-negative")
+
+
 class Counter:
     """Wrapper around an OpenTelemetry Counter instrument."""
 
@@ -58,6 +67,7 @@ class Counter:
         self._counter = counter
 
     def inc(self, value: int | float = 1, attributes: Attributes = None) -> None:
+        _require_non_negative(value, "Counter")
         self._counter.add(value, attributes=attributes)
 
 
@@ -68,13 +78,11 @@ class UpDownCounter:
         self._counter = counter
 
     def inc(self, value: int | float = 1, attributes: Attributes = None) -> None:
-        if value < 0:
-            raise ValueError("UpDownCounter values must be non-negative")
+        _require_non_negative(value, "UpDownCounter")
         self._counter.add(value, attributes=attributes)
 
     def dec(self, value: int | float = 1, attributes: Attributes = None) -> None:
-        if value < 0:
-            raise ValueError("UpDownCounter values must be non-negative")
+        _require_non_negative(value, "UpDownCounter")
         self._counter.add(-value, attributes=attributes)
 
 
@@ -85,15 +93,35 @@ class Histogram:
         self._histogram = histogram
 
     def record(self, value: int | float, attributes: Attributes = None) -> None:
+        _require_non_negative(value, "Histogram")
         self._histogram.record(value, attributes=attributes)
 
 
+AttributeKey = tuple[tuple[str, object], ...]
+
+
+def _freeze_attribute(value: AttributeValue) -> object:
+    if isinstance(value, (list, tuple)):
+        return tuple(_freeze_attribute(item) for item in value)
+    return value
+
+
+def _attribute_key(attributes: Attributes) -> AttributeKey:
+    if not attributes:
+        return ()
+    return tuple(
+        sorted((key, _freeze_attribute(value)) for key, value in attributes.items())
+    )
+
+
 class Gauge:
-    """Observable gauge backed by a simple set/get interface."""
+    """Observable gauge holding one value per attribute set."""
 
     def __init__(self, meter: Meter, name: str, description: str, unit: str) -> None:
-        self._value: float = 0.0
-        self._attributes: Attributes = None
+        self._lock = threading.Lock()
+        self._observations: dict[
+            AttributeKey, tuple[float, dict[str, AttributeValue] | None]
+        ] = {}
         meter.create_observable_gauge(
             name=name,
             description=description,
@@ -102,14 +130,33 @@ class Gauge:
         )
 
     def _observe(self, _options: CallbackOptions) -> list[Observation]:
-        return [Observation(self._value, self._attributes)]
+        with self._lock:
+            snapshot = list(self._observations.values())
+        return [
+            Observation(value, dict(attributes) if attributes is not None else None)
+            for value, attributes in snapshot
+        ]
 
     def set(self, value: int | float, attributes: Attributes = None) -> None:
-        self._value = float(value)
-        self._attributes = attributes
+        key = _attribute_key(attributes)
+        stored = dict(attributes) if attributes else None
+        with self._lock:
+            self._observations[key] = (float(value), stored)
 
-    def get(self) -> float:
-        return self._value
+    def get(self, attributes: Attributes = None) -> float:
+        key = _attribute_key(attributes)
+        with self._lock:
+            observation = self._observations.get(key)
+        return observation[0] if observation is not None else 0.0
+
+    def remove(self, attributes: Attributes = None) -> bool:
+        key = _attribute_key(attributes)
+        with self._lock:
+            return self._observations.pop(key, None) is not None
+
+    def clear(self) -> None:
+        with self._lock:
+            self._observations.clear()
 
 
 class TimestampNS:
@@ -135,13 +182,69 @@ class Timer:
     def record(self, start_time: TimestampNS, attributes: Attributes = None) -> None:
         self._histogram.record(start_time.elapsed_ms(), attributes)
 
+    @contextmanager
+    def time(self, attributes: Attributes = None) -> Iterator[None]:
+        start_time = TimestampNS.now()
+        try:
+            yield
+        finally:
+            self.record(start_time, attributes)
+
 
 class Metrics:
-    """Factory for creating metric instruments with an optional name prefix."""
+    """Factory for creating metric instruments with an optional name prefix.
 
-    def __init__(self, meter: Meter, prefix: str = "") -> None:
+    The instance returned by :func:`setup_metrics` can be used as a context
+    manager so its provider is flushed and shut down on exit.
+    """
+
+    def __init__(
+        self,
+        meter: Meter,
+        prefix: str = "",
+        *,
+        provider: MeterProvider | None = None,
+        owns_provider: bool = False,
+    ) -> None:
         self._meter = meter
         self._prefix = prefix
+        self._provider = provider
+        self._owns_provider = owns_provider
+        self._closed = False
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        self.shutdown()
+
+    def force_flush(self, timeout_millis: int = 10_000) -> bool:
+        if self._provider is None or self._closed:
+            return True
+        return self._provider.force_flush(timeout_millis)
+
+    def shutdown(self) -> None:
+        """Flush and shut down the owned provider. Safe to call more than once."""
+        global _active_metrics
+
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            if self._provider is not None:
+                try:
+                    self._provider.force_flush()
+                finally:
+                    if self._owns_provider:
+                        self._provider.shutdown()
+        finally:
+            if _active_metrics is self:
+                _active_metrics = None
 
     def _full_name(self, name: MetricName) -> str:
         return f"{self._prefix}.{name}" if self._prefix else str(name)
@@ -197,40 +300,69 @@ class Metrics:
         )
 
 
-def setup_metrics(config: OtelConfig) -> Metrics:
-    """Bootstrap the OTel metrics pipeline and return a Metrics factory.
+_active_metrics: Metrics | None = None
 
-    Registers an atexit hook to flush metrics on shutdown.
-    """
+
+def _build_metric_exporter(config: OtelConfig) -> MetricExporter:
     endpoint = config.resolved_metrics_endpoint()
     logger.info("OTel: exporting metrics via %s to %s", config.protocol, endpoint)
 
-    exporter: MetricExporter
     if config.protocol == OtelProtocol.GRPC:
         from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import (
             OTLPMetricExporter as GrpcExporter,
         )
 
-        exporter = GrpcExporter(endpoint=endpoint, headers=config.resolved_headers())
-    else:
-        from opentelemetry.exporter.otlp.proto.http.metric_exporter import (
-            OTLPMetricExporter as HttpExporter,
+        return GrpcExporter(endpoint=endpoint, headers=config.resolved_headers())
+
+    from opentelemetry.exporter.otlp.proto.http.metric_exporter import (
+        OTLPMetricExporter as HttpExporter,
+    )
+
+    return HttpExporter(endpoint=endpoint, headers=config.resolved_headers())
+
+
+def setup_metrics(
+    config: OtelConfig,
+    *,
+    meter_provider: MeterProvider | None = None,
+    set_global: bool = True,
+) -> Metrics:
+    """Bootstrap the OTel metrics pipeline and return a Metrics factory.
+
+    Reuses an existing provider when one was already configured with
+    ``set_global=True``. Pass ``set_global=False`` for isolated or repeatable
+    setups, or inject ``meter_provider`` to manage the provider yourself.
+    """
+    global _active_metrics
+
+    if meter_provider is None and set_global and _active_metrics is not None:
+        logger.warning("OTel metrics already configured; reusing the existing provider")
+        return _active_metrics
+
+    owns_provider = meter_provider is None
+    if meter_provider is None:
+        reader = PeriodicExportingMetricReader(_build_metric_exporter(config))
+        meter_provider = MeterProvider(
+            metric_readers=[reader],
+            resource=Resource.create(
+                {**(config.tags or {}), SERVICE_NAME: config.service_name}
+            ),
         )
 
-        exporter = HttpExporter(endpoint=endpoint, headers=config.resolved_headers())
+    if set_global:
+        otel_metrics.set_meter_provider(meter_provider)
 
-    reader = PeriodicExportingMetricReader(exporter)
-    provider = MeterProvider(
-        metric_readers=[reader],
-        resource=Resource.create(
-            {**(config.tags or {}), SERVICE_NAME: config.service_name}
-        ),
+    metrics = Metrics(
+        meter_provider.get_meter(config.service_name),
+        prefix=config.metric_prefix or "",
+        provider=meter_provider,
+        owns_provider=owns_provider,
     )
-    atexit.register(provider.shutdown)
-    otel_metrics.set_meter_provider(provider)
-
-    meter = otel_metrics.get_meter(config.service_name)
-    return Metrics(meter, prefix=config.service_name)
+    if owns_provider:
+        atexit.register(metrics.shutdown)
+    if set_global:
+        _active_metrics = metrics
+    return metrics
 
 
 def build_test_metrics() -> Metrics:

@@ -34,7 +34,14 @@ from otel_metrics.metrics import (
     build_test_metrics,
     setup_metrics,
 )
-from otel_metrics.telemetry import Instrumentor, build_test_tracer, setup_telemetry
+from otel_metrics.telemetry import (
+    Instrumentor,
+    build_span_exporter,
+    build_test_tracer,
+    force_flush_telemetry,
+    setup_telemetry,
+    shutdown_telemetry,
+)
 
 __all__ = [
     "Counter",
@@ -49,8 +56,11 @@ __all__ = [
     "Timer",
     "TimestampNS",
     "UpDownCounter",
+    "build_span_exporter",
     "build_test_metrics",
     "build_test_tracer",
+    "force_flush_telemetry",
     "setup_metrics",
     "setup_telemetry",
+    "shutdown_telemetry",
 ]

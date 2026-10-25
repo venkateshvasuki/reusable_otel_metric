@@ -11,6 +11,7 @@ from pydantic import (
     BeforeValidator,
     Field,
     SecretStr,
+    field_validator,
 )
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
@@ -55,7 +56,7 @@ class OtelProtocol(StrEnum):
 class OtelConfig(BaseSettings):
     """Configuration for the OpenTelemetry exporters.
 
-    Values are resolved from constructor args, YAML fields, or environment variables.
+    Values are resolved from constructor args or environment variables.
     """
 
     model_config = SettingsConfigDict(
@@ -83,6 +84,15 @@ class OtelConfig(BaseSettings):
         default=None,
         validation_alias="OTEL_RESOURCE_ATTRIBUTES",
     )
+    metric_prefix: str | None = None
+
+    @field_validator("metric_prefix", mode="after")
+    @classmethod
+    def _normalise_metric_prefix(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        return stripped or None
 
     def resolved_metrics_endpoint(self) -> str:
         """Return the full metrics endpoint URL based on protocol."""
