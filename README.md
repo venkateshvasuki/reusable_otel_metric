@@ -160,7 +160,10 @@ metrics = setup_metrics(
 
 `OtlpMetricsConfig` differs from `PrometheusMetricsConfig` by its required
 `endpoint`, so a pull-only service cannot be forced to set a fake OTLP
-destination, and an OTLP config cannot be constructed without one.
+destination, and an OTLP config cannot be constructed without one. The two
+variants are formally differentiated by an `Annotated` discriminated union on
+the `exporter` field (`AnyMetricsConfig`), so parsing a config mapping (e.g.
+from JSON) selects the correct subclass via the `exporter` key.
 
 `metric_prefix` is optional. When set, instrument names are prefixed with it
 (`myapp.request_count`). It is not derived from `service_name` automatically,
