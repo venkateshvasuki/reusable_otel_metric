@@ -31,19 +31,31 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Create the release tag
+        id: tag
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
             echo "::notice::v$VERSION already exists -- leaving it unchanged"
+            echo "dispatch=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+
+          last_tag=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
+          if [ -n "$last_tag" ] && git diff --quiet "$last_tag" "$GITHUB_SHA" -- . ':(exclude)release-version.txt'; then
+            echo "::notice::no changes since $last_tag -- not releasing $VERSION"
+            echo "dispatch=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -a "v$VERSION" "$GITHUB_SHA" -m "Release $VERSION"
           git push origin "refs/tags/v$VERSION"
+          echo "dispatch=true" >> "$GITHUB_OUTPUT"
 
       - name: Dispatch the publish workflow
+        if: steps.tag.outputs.dispatch == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
