@@ -23,7 +23,11 @@ from opentelemetry.sdk.resources import Resource
 from prometheus_client import generate_latest
 
 import otel_metrics.metrics as metrics_module
-from otel_metrics.config import MetricsExporter, OtelConfig, OtelProtocol
+from otel_metrics.config import (
+    OtelConfig,
+    OtelProtocol,
+    PrometheusMetricsConfig,
+)
 from otel_metrics.metrics import (
     Counter,
     Gauge,
@@ -575,9 +579,8 @@ class TestSetupMetrics:
         provider.shutdown()
 
     def test_prometheus_pull_setup_needs_no_endpoint(self):
-        config = OtelConfig(
+        config = PrometheusMetricsConfig(
             service_name="pull-svc",
-            metrics_exporter=MetricsExporter.PROMETHEUS,
             metric_prefix="resolution_agent",
         )
         with setup_metrics(config, set_global=False) as metrics:
@@ -587,9 +590,7 @@ class TestSetupMetrics:
         assert "resolution_agent_request_count_total" in output
 
     def test_prometheus_pull_uses_pull_reader(self):
-        config = OtelConfig(
-            service_name="pull-svc", metrics_exporter=MetricsExporter.PROMETHEUS
-        )
+        config = PrometheusMetricsConfig(service_name="pull-svc")
         with setup_metrics(config, set_global=False) as metrics:
             assert isinstance(metrics._reader, PrometheusMetricReader)
 

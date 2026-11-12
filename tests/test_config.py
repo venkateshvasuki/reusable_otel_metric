@@ -1,9 +1,18 @@
 """Tests for otel_metrics.config."""
 
-import pytest
-from pydantic import ValidationError
+from typing import get_args
 
-from otel_metrics.config import MetricsExporter, OtelConfig, OtelProtocol
+import pytest
+from pydantic import TypeAdapter, ValidationError
+
+from otel_metrics.config import (
+    AnyMetricsConfig,
+    MetricsExporter,
+    OtelConfig,
+    OtelProtocol,
+    OtlpMetricsConfig,
+    PrometheusMetricsConfig,
+)
 
 
 class TestOtelProtocol:
@@ -19,56 +28,50 @@ class TestMetricsExporter:
         assert MetricsExporter.OTLP == "otlp"
         assert MetricsExporter.PROMETHEUS == "prometheus"
 
-    def test_defaults_to_otlp(self):
-        config = OtelConfig(endpoint="http://localhost:4317", service_name="svc")
-        assert config.metrics_exporter is MetricsExporter.OTLP
 
-    def test_from_env_var(self, monkeypatch):
-        monkeypatch.setenv("OTEL_METRICS_EXPORTER", "prometheus")
-        config = OtelConfig(endpoint="http://localhost:4317", service_name="svc")
-        assert config.metrics_exporter is MetricsExporter.PROMETHEUS
+class TestMetricsConfigVariants:
+    def test_prometheus_has_no_endpoint(self):
+        config = PrometheusMetricsConfig(service_name="svc")
+        assert "endpoint" not in PrometheusMetricsConfig.model_fields
+        assert config.exporter is MetricsExporter.PROMETHEUS
 
-    def test_invalid_value_rejected(self):
-        with pytest.raises(ValidationError, match="metrics_exporter"):
-            OtelConfig(
-                endpoint="http://localhost:4317",
-                service_name="svc",
-                metrics_exporter="kafka",
-            )
+    def test_otlp_requires_endpoint(self):
+        with pytest.raises(ValidationError):
+            OtlpMetricsConfig(service_name="svc")
 
+    def test_otel_config_requires_endpoint(self):
+        with pytest.raises(ValidationError):
+            OtelConfig(service_name="svc")
 
-class TestEndpointOptionality:
-    def test_endpoint_optional_in_pull_mode(self):
-        config = OtelConfig(
-            service_name="svc", metrics_exporter=MetricsExporter.PROMETHEUS
-        )
-        assert config.endpoint is None
-
-    def test_endpoint_required_in_push_mode(self):
-        with pytest.raises(ValidationError, match="endpoint is required"):
-            OtelConfig(service_name="svc", metrics_exporter=MetricsExporter.OTLP)
-
-    def test_blank_endpoint_still_rejected_in_pull_mode(self):
+    def test_blank_endpoint_rejected(self):
         with pytest.raises(ValidationError, match="must not be blank"):
-            OtelConfig(
-                endpoint="   ",
-                service_name="svc",
-                metrics_exporter=MetricsExporter.PROMETHEUS,
-            )
+            OtlpMetricsConfig(endpoint="   ", service_name="svc")
 
-    def test_resolved_metrics_endpoint_raises_without_endpoint(self):
-        config = OtelConfig(
-            service_name="svc", metrics_exporter=MetricsExporter.PROMETHEUS
-        )
-        with pytest.raises(ValueError, match="endpoint is not configured"):
-            config.resolved_metrics_endpoint()
 
-    def test_resolved_traces_endpoint_raises_without_endpoint(self):
-        config = OtelConfig(
-            service_name="svc", metrics_exporter=MetricsExporter.PROMETHEUS
+class TestMetricsConfigUnion:
+    """The Annotated discriminator picks the subclass."""
+
+    @staticmethod
+    def _parse(value: dict) -> object:
+        return TypeAdapter(AnyMetricsConfig).validate_python(value)
+
+    def test_prometheus_branch(self):
+        config = self._parse({"exporter": "prometheus", "service_name": "svc"})
+        assert isinstance(config, PrometheusMetricsConfig)
+
+    def test_otlp_branch(self):
+        config = self._parse(
+            {"exporter": "otlp", "service_name": "svc", "endpoint": "http://x"}
         )
-        with pytest.raises(ValueError, match="endpoint is not configured"):
-            config.resolved_traces_endpoint()
+        assert isinstance(config, OtlpMetricsConfig)
+
+    def test_unknown_exporter_rejected(self):
+        with pytest.raises(ValidationError):
+            self._parse({"exporter": "kafka", "service_name": "svc"})
+
+    def test_union_members(self):
+        (union, _) = get_args(AnyMetricsConfig)
+        assert set(get_args(union)) == {OtlpMetricsConfig, PrometheusMetricsConfig}
 
 
 class TestOtelConfigConstruction:

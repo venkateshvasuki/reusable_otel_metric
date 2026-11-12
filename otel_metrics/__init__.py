@@ -20,7 +20,15 @@ Usage:
     tracer = setup_telemetry(config)
 """
 
-from otel_metrics.config import MetricsExporter, OtelConfig, OtelProtocol
+from otel_metrics.config import (
+    AnyMetricsConfig,
+    MetricsConfig,
+    MetricsExporter,
+    OtelConfig,
+    OtelProtocol,
+    OtlpMetricsConfig,
+    PrometheusMetricsConfig,
+)
 from otel_metrics.metrics import (
     Counter,
     Gauge,
@@ -45,6 +53,7 @@ from otel_metrics.telemetry import (
 )
 
 __all__ = [
+    "AnyMetricsConfig",
     "Counter",
     "Gauge",
     "Histogram",
@@ -52,9 +61,12 @@ __all__ = [
     "MetricName",
     "MetricUnit",
     "Metrics",
+    "MetricsConfig",
     "MetricsExporter",
     "OtelConfig",
     "OtelProtocol",
+    "OtlpMetricsConfig",
+    "PrometheusMetricsConfig",
     "TestMetrics",
     "Timer",
     "TimestampNS",

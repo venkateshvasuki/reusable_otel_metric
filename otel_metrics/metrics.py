@@ -24,7 +24,7 @@ from opentelemetry.sdk.metrics.export import (
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.util.types import AttributeValue, Attributes
 
-from otel_metrics.config import MetricsExporter, OtelConfig, OtelProtocol
+from otel_metrics.config import MetricsConfig, OtelProtocol, OtlpMetricsConfig
 
 if TYPE_CHECKING:
     from opentelemetry.metrics import (
@@ -319,19 +319,19 @@ class Metrics:
 _active_metrics: Metrics | None = None
 
 
-def _build_metric_reader(config: OtelConfig) -> MetricReader:
-    if config.metrics_exporter is MetricsExporter.PROMETHEUS:
-        from opentelemetry.exporter.prometheus import PrometheusMetricReader
+def _build_metric_reader(config: MetricsConfig) -> MetricReader:
+    if isinstance(config, OtlpMetricsConfig):
+        endpoint = config.resolved_metrics_endpoint()
+        logger.info("OTel: exporting metrics via %s to %s", config.protocol, endpoint)
+        return PeriodicExportingMetricReader(_build_metric_exporter(config))
 
-        logger.info("OTel: exposing metrics on the Prometheus registry for pull")
-        return PrometheusMetricReader()
+    from opentelemetry.exporter.prometheus import PrometheusMetricReader
 
-    endpoint = config.resolved_metrics_endpoint()
-    logger.info("OTel: exporting metrics via %s to %s", config.protocol, endpoint)
-    return PeriodicExportingMetricReader(_build_metric_exporter(config))
+    logger.info("OTel: exposing metrics on the Prometheus registry for pull")
+    return PrometheusMetricReader()
 
 
-def _build_metric_exporter(config: OtelConfig) -> MetricExporter:
+def _build_metric_exporter(config: OtlpMetricsConfig) -> MetricExporter:
     endpoint = config.resolved_metrics_endpoint()
 
     if config.protocol == OtelProtocol.GRPC:
@@ -349,20 +349,21 @@ def _build_metric_exporter(config: OtelConfig) -> MetricExporter:
 
 
 def setup_metrics(
-    config: OtelConfig,
+    config: MetricsConfig,
     *,
     meter_provider: MeterProvider | None = None,
     set_global: bool = True,
 ) -> Metrics:
     """Bootstrap the OTel metrics pipeline and return a Metrics factory.
 
+    The config selects push vs pull: an :class:`OtlpMetricsConfig` (or an
+    :class:`OtelConfig`, its subclass) pushes over OTLP on a timer; a
+    :class:`PrometheusMetricsConfig` serves the default ``prometheus_client``
+    registry for a scraper to pull.
+
     Reuses an existing provider when one was already configured with
     ``set_global=True``. Pass ``set_global=False`` for isolated or repeatable
     setups, or inject ``meter_provider`` to manage the provider yourself.
-
-    With ``OTEL_METRICS_EXPORTER=prometheus`` the provider uses a pull reader
-    that serves the default ``prometheus_client`` registry, and ``endpoint``
-    is not required.
     """
     global _active_metrics
 
