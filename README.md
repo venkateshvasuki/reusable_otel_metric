@@ -305,13 +305,23 @@ Produces a wheel and an sdist in `dist/`.
 
 ## Releasing
 
-Set the next version in `release-version.txt` and merge to `main`. The
-`Release on merge` workflow creates the matching `v*` tag and dispatches the
-publish workflow, which builds and uploads that version to PyPI and creates the
-GitHub release.
+`release-version.txt` holds the version the next release will use. When a change
+lands on `main` while that version is not yet on PyPI, the `Release on merge`
+workflow creates the matching `v*` tag and dispatches the publish workflow, which
+builds and uploads the version and creates the GitHub release.
+
+After a successful publish, the publish workflow bumps `release-version.txt` to
+the next patch (for example `0.6.0` → `0.6.1`) and auto-merges a "Prepare
+release" PR. A version bump on its own never publishes: releases are skipped
+when the only change since the last tag is `release-version.txt`. The next
+change merged to `main` publishes the prepared version.
+
+For a minor or major release, set the version in `release-version.txt` alongside
+the change (for example `0.7.0`) before it merges. If the prepare PR cannot be
+auto-merged, merge it manually; the release still waits for the next code change.
 
 The package version itself comes from the git tag via `hatch-vcs`; the version
-file only tells the automation which tag to create. Bump it for each release.
+file only tells the automation which tag to create.
 
 Release tags are immutable and must not be moved. The `latest` tag is a floating
 tag: every merge to `main` moves it to the new commit.

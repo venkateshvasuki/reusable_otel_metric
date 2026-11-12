@@ -97,3 +97,59 @@ jobs:
             exit 0
           fi
           gh release create "$tag" --title "$tag" --generate-notes --latest
+
+  prepare-next-release:
+    needs: [build, publish]
+    if: >-
+      needs.publish.result == 'success' &&
+      (github.event_name == 'push' || inputs.target == 'pypi')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Bump release-version.txt and merge the prepare PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASED: ${{ needs.build.outputs.version }}
+        run: |
+          current=$(tr -d '[:space:]' < release-version.txt)
+          if [ "$current" != "$RELEASED" ]; then
+            echo "::notice::release-version.txt is already $current after $RELEASED -- leaving it alone"
+            exit 0
+          fi
+
+          IFS=. read -r major minor patch <<< "$RELEASED"
+          next="$major.$minor.$((patch + 1))"
+          branch="chore/prepare-v$next"
+
+          if [ "$(gh pr list --head "$branch" --state open --json number --jq 'length')" = "0" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git switch -c "$branch"
+            printf '%s\n' "$next" > release-version.txt
+            git add release-version.txt
+            git commit -m "Prepare release $next"
+            git push --force origin "$branch"
+
+            gh pr create \
+              --base "${{ github.event.repository.default_branch }}" \
+              --head "$branch" \
+              --title "Prepare release $next" \
+              --body "Automated bump of \`release-version.txt\` after publishing $RELEASED. The next change merged to \`main\` publishes $next; edit the version first for a minor or major release."
+          else
+            echo "::notice::a prepare PR for $next is already open"
+          fi
+
+          for attempt in 1 2 3 4 5; do
+            if gh pr merge "$branch" --squash --delete-branch; then
+              exit 0
+            fi
+            echo "::warning::auto-merge attempt $attempt failed; retrying"
+            sleep 5
+          done
+          echo "::warning::could not auto-merge $branch -- merge the prepare PR manually"
