@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from otel_metrics.config import OtelConfig, OtelProtocol
+from otel_metrics.config import MetricsExporter, OtelConfig, OtelProtocol
 
 
 class TestOtelProtocol:
@@ -12,6 +12,62 @@ class TestOtelProtocol:
 
     def test_http_protobuf_value(self):
         assert OtelProtocol.HTTP_PROTOBUF == "http/protobuf"
+
+
+class TestMetricsExporter:
+    def test_values(self):
+        assert MetricsExporter.OTLP == "otlp"
+        assert MetricsExporter.PROMETHEUS == "prometheus"
+
+    def test_defaults_to_otlp(self):
+        config = OtelConfig(endpoint="http://localhost:4317", service_name="svc")
+        assert config.metrics_exporter is MetricsExporter.OTLP
+
+    def test_from_env_var(self, monkeypatch):
+        monkeypatch.setenv("OTEL_METRICS_EXPORTER", "prometheus")
+        config = OtelConfig(endpoint="http://localhost:4317", service_name="svc")
+        assert config.metrics_exporter is MetricsExporter.PROMETHEUS
+
+    def test_invalid_value_rejected(self):
+        with pytest.raises(ValidationError, match="metrics_exporter"):
+            OtelConfig(
+                endpoint="http://localhost:4317",
+                service_name="svc",
+                metrics_exporter="kafka",
+            )
+
+
+class TestEndpointOptionality:
+    def test_endpoint_optional_in_pull_mode(self):
+        config = OtelConfig(
+            service_name="svc", metrics_exporter=MetricsExporter.PROMETHEUS
+        )
+        assert config.endpoint is None
+
+    def test_endpoint_required_in_push_mode(self):
+        with pytest.raises(ValidationError, match="endpoint is required"):
+            OtelConfig(service_name="svc", metrics_exporter=MetricsExporter.OTLP)
+
+    def test_blank_endpoint_still_rejected_in_pull_mode(self):
+        with pytest.raises(ValidationError, match="must not be blank"):
+            OtelConfig(
+                endpoint="   ", service_name="svc",
+                metrics_exporter=MetricsExporter.PROMETHEUS,
+            )
+
+    def test_resolved_metrics_endpoint_raises_without_endpoint(self):
+        config = OtelConfig(
+            service_name="svc", metrics_exporter=MetricsExporter.PROMETHEUS
+        )
+        with pytest.raises(ValueError, match="endpoint is not configured"):
+            config.resolved_metrics_endpoint()
+
+    def test_resolved_traces_endpoint_raises_without_endpoint(self):
+        config = OtelConfig(
+            service_name="svc", metrics_exporter=MetricsExporter.PROMETHEUS
+        )
+        with pytest.raises(ValueError, match="endpoint is not configured"):
+            config.resolved_traces_endpoint()
 
 
 class TestOtelConfigConstruction:

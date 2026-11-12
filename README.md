@@ -76,6 +76,32 @@ active.dec()
 `inc` adds and `dec` subtracts, both taking an optional amount and attributes.
 Negative amounts raise `ValueError` for counters and histograms.
 
+### Units and histogram buckets
+
+`counter`, `up_down_counter`, `histogram` and `gauge` accept a `unit`. The
+Prometheus exporter appends the unit to the metric name, so setting it keeps
+the exported names stable (a counter with `unit="s"` exports as
+`..._seconds_total`):
+
+```python
+counter = metrics.counter(MyMetrics.JOB_SECONDS, description="CPU time", unit="s")
+```
+
+`histogram` and `timer` also accept explicit bucket boundaries, which override
+the OTel default buckets (0 to 10,000):
+
+```python
+hist = metrics.histogram(
+    MyMetrics.CHECKPOINT_SECONDS,
+    description="Checkpoint duration",
+    unit="s",
+    buckets=[0.01, 0.1, 1, 10, 100],
+)
+timer = metrics.timer(MyMetrics.REQUEST_DURATION_MS, buckets=[1, 5, 10, 50, 100])
+```
+
+Timers always record milliseconds.
+
 ### Gauges
 
 A gauge keeps one value per attribute set:
@@ -96,14 +122,23 @@ A gauge emits nothing until its first `set`.
 
 | Field | Env var | Default |
 |-------|---------|---------|
-| `endpoint` | `OTEL_EXPORTER_OTLP_ENDPOINT` | *(required)* |
+| `endpoint` | `OTEL_EXPORTER_OTLP_ENDPOINT` | *(required unless `metrics_exporter` is `prometheus`)* |
 | `service_name` | `OTEL_SERVICE_NAME` | *(required)* |
 | `protocol` | `OTEL_EXPORTER_OTLP_PROTOCOL` | `grpc` |
+| `metrics_exporter` | `OTEL_METRICS_EXPORTER` | `otlp` |
 | `headers` | `OTEL_EXPORTER_OTLP_HEADERS` | `None` |
 | `tags` | `OTEL_RESOURCE_ATTRIBUTES` | `None` |
 | `metric_prefix` | `OTEL_METRIC_PREFIX` | `None` (no prefix) |
 
 Supported protocols: `grpc`, `http/protobuf`.
+
+`metrics_exporter` chooses how metrics leave the process:
+
+- `otlp` (default) pushes metrics over OTLP to `endpoint` on a timer.
+- `prometheus` builds a pull reader that serves the default `prometheus_client`
+  registry, so a scraper (e.g. Prometheus scraping `/metrics` on the pod) can
+  collect them. In this mode `endpoint` is not required — but traces still
+  need it, so an endpoint-less config can only be used with `setup_metrics`.
 
 `metric_prefix` is optional. When set, instrument names are prefixed with it
 (`myapp.request_count`). It is not derived from `service_name` automatically,
@@ -191,12 +226,19 @@ setup_telemetry(config, *instrumentors)
 
 ### Testing
 
-Use `build_test_metrics()` to get a no-op `Metrics` instance for unit tests:
+Use `build_test_metrics()` to get a `Metrics` instance plus an in-memory reader
+for unit tests:
 
 ```python
 from otel_metrics import build_test_metrics
 
-metrics = build_test_metrics()
+m, reader = build_test_metrics()
+m.counter(MyMetrics.REQUEST_COUNT).inc(3)
+
+data = reader.get_metrics_data()
+metric = data.resource_metrics[0].scope_metrics[0].metrics[0]
+assert metric.name == "request_count"
+assert metric.data.data_points[0].value == 3
 ```
 
 ## Development

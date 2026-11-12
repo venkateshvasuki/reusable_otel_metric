@@ -6,23 +6,25 @@ import atexit
 import logging
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from enum import StrEnum
 from types import TracebackType
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, NamedTuple, Self
 
 from opentelemetry import metrics as otel_metrics
 from opentelemetry.metrics import CallbackOptions, Observation
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import (
+    InMemoryMetricReader,
     MetricExporter,
+    MetricReader,
     PeriodicExportingMetricReader,
 )
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.util.types import AttributeValue, Attributes
 
-from otel_metrics.config import OtelConfig, OtelProtocol
+from otel_metrics.config import MetricsExporter, OtelConfig, OtelProtocol
 
 if TYPE_CHECKING:
     from opentelemetry.metrics import (
@@ -205,11 +207,13 @@ class Metrics:
         *,
         provider: MeterProvider | None = None,
         owns_provider: bool = False,
+        reader: MetricReader | None = None,
     ) -> None:
         self._meter = meter
         self._prefix = prefix
         self._provider = provider
         self._owns_provider = owns_provider
+        self._reader = reader
         self._closed = False
 
     def __enter__(self) -> Self:
@@ -249,10 +253,17 @@ class Metrics:
     def _full_name(self, name: MetricName) -> str:
         return f"{self._prefix}.{name}" if self._prefix else str(name)
 
-    def counter(self, name: MetricName, description: str = "") -> Counter:
+    def counter(
+        self,
+        name: MetricName,
+        description: str = "",
+        unit: MetricUnit | str | None = None,
+    ) -> Counter:
         return Counter(
             self._meter.create_counter(
-                name=self._full_name(name), description=description
+                name=self._full_name(name),
+                description=description,
+                unit=str(unit) if unit else "",
             )
         )
 
@@ -275,12 +286,14 @@ class Metrics:
         name: MetricName,
         description: str = "",
         unit: MetricUnit | str | None = None,
+        buckets: Sequence[float] | None = None,
     ) -> Histogram:
         return Histogram(
             self._meter.create_histogram(
                 name=self._full_name(name),
                 description=description,
                 unit=str(unit) if unit else "",
+                explicit_bucket_boundaries_advisory=buckets,
             )
         )
 
@@ -294,18 +307,39 @@ class Metrics:
             self._meter, self._full_name(name), description, str(unit) if unit else ""
         )
 
-    def timer(self, name: MetricName, description: str = "") -> Timer:
+    def timer(
+        self,
+        name: MetricName,
+        description: str = "",
+        buckets: Sequence[float] | None = None,
+    ) -> Timer:
         return Timer(
-            self.histogram(name, description=description, unit=MetricUnit.MILLISECONDS)
+            self.histogram(
+                name,
+                description=description,
+                unit=MetricUnit.MILLISECONDS,
+                buckets=buckets,
+            )
         )
 
 
 _active_metrics: Metrics | None = None
 
 
-def _build_metric_exporter(config: OtelConfig) -> MetricExporter:
+def _build_metric_reader(config: OtelConfig) -> MetricReader:
+    if config.metrics_exporter is MetricsExporter.PROMETHEUS:
+        from opentelemetry.exporter.prometheus import PrometheusMetricReader
+
+        logger.info("OTel: exposing metrics on the Prometheus registry for pull")
+        return PrometheusMetricReader()
+
     endpoint = config.resolved_metrics_endpoint()
     logger.info("OTel: exporting metrics via %s to %s", config.protocol, endpoint)
+    return PeriodicExportingMetricReader(_build_metric_exporter(config))
+
+
+def _build_metric_exporter(config: OtelConfig) -> MetricExporter:
+    endpoint = config.resolved_metrics_endpoint()
 
     if config.protocol == OtelProtocol.GRPC:
         from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import (
@@ -332,6 +366,10 @@ def setup_metrics(
     Reuses an existing provider when one was already configured with
     ``set_global=True``. Pass ``set_global=False`` for isolated or repeatable
     setups, or inject ``meter_provider`` to manage the provider yourself.
+
+    With ``OTEL_METRICS_EXPORTER=prometheus`` the provider uses a pull reader
+    that serves the default ``prometheus_client`` registry, and ``endpoint``
+    is not required.
     """
     global _active_metrics
 
@@ -341,7 +379,7 @@ def setup_metrics(
 
     owns_provider = meter_provider is None
     if meter_provider is None:
-        reader = PeriodicExportingMetricReader(_build_metric_exporter(config))
+        reader = _build_metric_reader(config)
         meter_provider = MeterProvider(
             metric_readers=[reader],
             resource=Resource.create(
@@ -357,6 +395,7 @@ def setup_metrics(
         prefix=config.metric_prefix or "",
         provider=meter_provider,
         owns_provider=owns_provider,
+        reader=reader if owns_provider else None,
     )
     if owns_provider:
         atexit.register(metrics.shutdown)
@@ -365,8 +404,24 @@ def setup_metrics(
     return metrics
 
 
-def build_test_metrics() -> Metrics:
-    """Return a no-op Metrics instance for unit testing."""
-    provider = MeterProvider()
+class TestMetrics(NamedTuple):
+    """Metrics factory plus the in-memory reader its provider feeds.
+
+    Unpack it and call ``reader.get_metrics_data()`` to assert on recorded
+    values::
+
+        test_metrics = build_test_metrics()
+        test_metrics.metrics.counter(MyMetrics.REQUEST_COUNT).inc(3)
+        data = test_metrics.reader.get_metrics_data()
+    """
+
+    metrics: Metrics
+    reader: InMemoryMetricReader
+
+
+def build_test_metrics() -> TestMetrics:
+    """Return a no-op Metrics instance with a reader tests can collect from."""
+    reader = InMemoryMetricReader()
+    provider = MeterProvider(metric_readers=[reader])
     meter = provider.get_meter("test")
-    return Metrics(meter)
+    return TestMetrics(Metrics(meter), reader)

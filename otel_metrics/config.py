@@ -12,6 +12,7 @@ from pydantic import (
     Field,
     SecretStr,
     field_validator,
+    model_validator,
 )
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
@@ -53,6 +54,17 @@ class OtelProtocol(StrEnum):
     GRPC = auto()
 
 
+class MetricsExporter(StrEnum):
+    """How metrics leave the process.
+
+    ``OTLP`` pushes to an OTLP endpoint on a timer; ``PROMETHEUS`` exposes the
+    metrics on the default ``prometheus_client`` registry for a scraper to pull.
+    """
+
+    OTLP = "otlp"
+    PROMETHEUS = "prometheus"
+
+
 class OtelConfig(BaseSettings):
     """Configuration for the OpenTelemetry exporters.
 
@@ -68,13 +80,18 @@ class OtelConfig(BaseSettings):
     # Fields without a validation_alias resolve to <env_prefix><FIELD_NAME>, so
     # `service_name` picks up OTEL_SERVICE_NAME; the OTLP names that don't fit
     # the prefix keep explicit env-var aliases.
-    endpoint: NonBlankStr = Field(
+    endpoint: NonBlankStr | None = Field(
+        default=None,
         validation_alias="OTEL_EXPORTER_OTLP_ENDPOINT",
     )
     service_name: NonBlankStr
     protocol: OtelProtocol = Field(
         default=OtelProtocol.GRPC,
         validation_alias="OTEL_EXPORTER_OTLP_PROTOCOL",
+    )
+    metrics_exporter: MetricsExporter = Field(
+        default=MetricsExporter.OTLP,
+        validation_alias="OTEL_METRICS_EXPORTER",
     )
     headers: Map[SecretStr] = Field(
         default=None,
@@ -94,12 +111,29 @@ class OtelConfig(BaseSettings):
         stripped = value.strip()
         return stripped or None
 
+    @model_validator(mode="after")
+    def _require_endpoint_for_otlp(self) -> OtelConfig:
+        if self.endpoint is None and self.metrics_exporter is MetricsExporter.OTLP:
+            raise ValueError(
+                "endpoint is required when metrics_exporter is 'otlp'; "
+                "only Prometheus pull mode may omit it"
+            )
+        return self
+
+    @staticmethod
+    def _resolve_endpoint(base: str | None, path: str) -> str:
+        if base is None:
+            raise ValueError(
+                "endpoint is not configured; OTLP export is unavailable in "
+                "Prometheus pull mode"
+            )
+        return f"{base.rstrip('/')}{path}"
+
     def resolved_metrics_endpoint(self) -> str:
         """Return the full metrics endpoint URL based on protocol."""
-        base = self.endpoint.rstrip("/")
         if self.protocol == OtelProtocol.GRPC:
-            return base
-        return f"{base}/v1/metrics"
+            return self._resolve_endpoint(self.endpoint, "")
+        return self._resolve_endpoint(self.endpoint, "/v1/metrics")
 
     def resolved_headers(self) -> dict[str, str] | None:
         """Return the headers with their real values, for the exporter."""
@@ -109,7 +143,6 @@ class OtelConfig(BaseSettings):
 
     def resolved_traces_endpoint(self) -> str:
         """Return the full traces endpoint URL based on protocol."""
-        base = self.endpoint.rstrip("/")
         if self.protocol == OtelProtocol.GRPC:
-            return base
-        return f"{base}/v1/traces"
+            return self._resolve_endpoint(self.endpoint, "")
+        return self._resolve_endpoint(self.endpoint, "/v1/traces")
