@@ -8,6 +8,12 @@ Reusable OpenTelemetry library: simplified wrappers around OTel metric instrumen
 pip install otel-metrics
 ```
 
+For Prometheus pull export, add the extra:
+
+```bash
+pip install "otel-metrics[prometheus]"
+```
+
 Or from a built wheel:
 
 ```bash
@@ -78,9 +84,7 @@ Negative amounts raise `ValueError` for counters and histograms.
 
 ### Units and histogram buckets
 
-`up_down_counter`, `histogram` and `gauge` accept a `unit`. The Prometheus
-exporter appends the unit to the metric name, so setting it keeps the exported
-names stable:
+`up_down_counter`, `histogram` and `gauge` accept a `unit`:
 
 ```python
 hist = metrics.histogram(
@@ -90,6 +94,12 @@ hist = metrics.histogram(
     buckets=[0.01, 0.1, 1, 10, 100],
 )
 ```
+
+The Prometheus exporter appends a suffix derived from the unit to the exported
+name, so the example above scrapes as `checkpoint_seconds`. Timers always set
+`unit="ms"`, so a timer named `request_duration_ms` exports as
+`request_duration_ms_milliseconds`; name timers without the unit
+(`REQUEST_DURATION`) when exporting to Prometheus.
 
 `counter` takes no unit — it is strictly for counting, and the Prometheus
 exporter already names counters `..._total`. If a count carries a unit
@@ -157,6 +167,17 @@ metrics = setup_metrics(
     PrometheusMetricsConfig(service_name="my-service", metric_prefix="myapp")
 )
 ```
+
+Pull export needs the `prometheus` extra. The reader registers on the
+process-global `prometheus_client` registry, so expose that registry from your
+app — for example with `prometheus_client.start_http_server(9464)` or a
+`/metrics` route returning `generate_latest()`. Run at most one pull-based
+setup per process: a second live setup serves every series twice, and shutting
+one down unregisters only its own collector.
+
+Names are sanitized for Prometheus: dots become underscores, counters gain
+`_total`, and unit-bearing instruments gain a unit suffix. `metric_prefix`
+`myapp` plus `request_count` scrapes as `myapp_request_count_total`.
 
 `OtlpMetricsConfig` differs from `PrometheusMetricsConfig` by its required
 `endpoint`, so a pull-only service cannot be forced to set a fake OTLP
