@@ -61,8 +61,8 @@ class MetricsExporter(StrEnum):
     metrics on the default ``prometheus_client`` registry for a scraper to pull.
     """
 
-    OTLP = "otlp"
-    PROMETHEUS = "prometheus"
+    OTLP = auto()
+    PROMETHEUS = auto()
 
 
 class OtelConfig(BaseSettings):
