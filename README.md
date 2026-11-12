@@ -78,17 +78,9 @@ Negative amounts raise `ValueError` for counters and histograms.
 
 ### Units and histogram buckets
 
-`counter`, `up_down_counter`, `histogram` and `gauge` accept a `unit`. The
-Prometheus exporter appends the unit to the metric name, so setting it keeps
-the exported names stable (a counter with `unit="s"` exports as
-`..._seconds_total`):
-
-```python
-counter = metrics.counter(MyMetrics.JOB_SECONDS, description="CPU time", unit="s")
-```
-
-`histogram` and `timer` also accept explicit bucket boundaries, which override
-the OTel default buckets (0 to 10,000):
+`up_down_counter`, `histogram` and `gauge` accept a `unit`. The Prometheus
+exporter appends the unit to the metric name, so setting it keeps the exported
+names stable:
 
 ```python
 hist = metrics.histogram(
@@ -97,6 +89,17 @@ hist = metrics.histogram(
     unit="s",
     buckets=[0.01, 0.1, 1, 10, 100],
 )
+```
+
+`counter` takes no unit — it is strictly for counting, and the Prometheus
+exporter already names counters `..._total`. If a count carries a unit
+(such as accumulated seconds), put the unit in the name and use a histogram
+or an up/down counter instead.
+
+`histogram` and `timer` also accept explicit bucket boundaries, which override
+the OTel default buckets (0 to 10,000):
+
+```python
 timer = metrics.timer(MyMetrics.REQUEST_DURATION_MS, buckets=[1, 5, 10, 50, 100])
 ```
 

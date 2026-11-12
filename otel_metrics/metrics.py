@@ -253,17 +253,10 @@ class Metrics:
     def _full_name(self, name: MetricName) -> str:
         return f"{self._prefix}.{name}" if self._prefix else str(name)
 
-    def counter(
-        self,
-        name: MetricName,
-        description: str = "",
-        unit: MetricUnit | str | None = None,
-    ) -> Counter:
+    def counter(self, name: MetricName, description: str = "") -> Counter:
         return Counter(
             self._meter.create_counter(
-                name=self._full_name(name),
-                description=description,
-                unit=str(unit) if unit else "",
+                name=self._full_name(name), description=description
             )
         )
 

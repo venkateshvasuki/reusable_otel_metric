@@ -140,15 +140,6 @@ class TestCounter:
         counter = metrics.counter(SampleMetrics.REQUEST_COUNT)
         counter.inc(1.5)
 
-    def test_unit_passed_to_meter(self):
-        mock_meter = MagicMock()
-        Metrics(mock_meter).counter(
-            SampleMetrics.REQUEST_COUNT, unit=MetricUnit.SECONDS
-        )
-        mock_meter.create_counter.assert_called_once_with(
-            name="request_count", description="", unit="s"
-        )
-
     def test_wraps_otel_counter(self):
         mock_counter = MagicMock()
         counter = Counter(mock_counter)
@@ -465,13 +456,6 @@ class TestBuildTestMetrics:
         assert metric.data.data_points[0].value == 3
         assert metric.data.data_points[0].attributes["route"] == "/x"
 
-    def test_reader_sees_counter_unit(self):
-        m, reader = build_test_metrics()
-        m.counter(SampleMetrics.REQUEST_COUNT, unit=MetricUnit.SECONDS).inc()
-        data = reader.get_metrics_data()
-        metric = data.resource_metrics[0].scope_metrics[0].metrics[0]
-        assert metric.unit == "s"
-
 
 # --- setup_metrics -----------------------------------------------------------
 
@@ -597,10 +581,10 @@ class TestSetupMetrics:
             metric_prefix="resolution_agent",
         )
         with setup_metrics(config, set_global=False) as metrics:
-            counter = metrics.counter(SampleMetrics.REQUEST_COUNT, unit="s")
+            counter = metrics.counter(SampleMetrics.REQUEST_COUNT)
             counter.inc(2)
             output = generate_latest().decode()
-        assert "resolution_agent_request_count_seconds_total" in output
+        assert "resolution_agent_request_count_total" in output
 
     def test_prometheus_pull_uses_pull_reader(self):
         config = OtelConfig(
