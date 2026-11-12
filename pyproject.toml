@@ -29,11 +29,15 @@ classifiers = [
 dependencies = [
     "pydantic>=2.0,<3.0",
     "pydantic-settings>=2.1.0",
-    "opentelemetry-api>=1.23,<2.0",
-    "opentelemetry-sdk>=1.23,<2.0",
-    "opentelemetry-exporter-otlp-proto-http>=1.23,<2.0",
-    "opentelemetry-exporter-otlp-proto-grpc>=1.23,<2.0",
-    "opentelemetry-exporter-prometheus>=0.66b0,<0.67",
+    "opentelemetry-api>=1.30,<2.0",
+    "opentelemetry-sdk>=1.30,<2.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.30,<2.0",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.30,<2.0",
+]
+
+[project.optional-dependencies]
+prometheus = [
+    "opentelemetry-exporter-prometheus>=0.66b0",
 ]
 
 [project.urls]
@@ -44,7 +48,9 @@ Issues = "https://github.com/venkateshvasuki/reusable_otel_metric/issues"
 [dependency-groups]
 dev = [
     "mypy>=1.11",
+    "opentelemetry-exporter-prometheus>=0.66b0",
     "opentelemetry-instrumentation>=0.40b0",
+    "prometheus-client>=0.5.0",
     "pytest>=8.0",
     "ruff>=0.4",
 ]
