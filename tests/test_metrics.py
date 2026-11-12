@@ -142,7 +142,9 @@ class TestCounter:
 
     def test_unit_passed_to_meter(self):
         mock_meter = MagicMock()
-        Metrics(mock_meter).counter(SampleMetrics.REQUEST_COUNT, unit=MetricUnit.SECONDS)
+        Metrics(mock_meter).counter(
+            SampleMetrics.REQUEST_COUNT, unit=MetricUnit.SECONDS
+        )
         mock_meter.create_counter.assert_called_once_with(
             name="request_count", description="", unit="s"
         )

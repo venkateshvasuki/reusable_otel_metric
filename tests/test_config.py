@@ -51,7 +51,8 @@ class TestEndpointOptionality:
     def test_blank_endpoint_still_rejected_in_pull_mode(self):
         with pytest.raises(ValidationError, match="must not be blank"):
             OtelConfig(
-                endpoint="   ", service_name="svc",
+                endpoint="   ",
+                service_name="svc",
                 metrics_exporter=MetricsExporter.PROMETHEUS,
             )
 
