@@ -15,16 +15,11 @@ from typing import TYPE_CHECKING, NamedTuple, Self
 from opentelemetry import metrics as otel_metrics
 from opentelemetry.metrics import CallbackOptions, Observation
 from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.metrics.export import (
-    InMemoryMetricReader,
-    MetricExporter,
-    MetricReader,
-    PeriodicExportingMetricReader,
-)
+from opentelemetry.sdk.metrics.export import InMemoryMetricReader, MetricReader
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.util.types import AttributeValue, Attributes
 
-from otel_metrics.config import MetricsConfig, OtelProtocol, OtlpMetricsConfig
+from otel_metrics.config import MetricsConfig
 
 if TYPE_CHECKING:
     from opentelemetry.metrics import (
@@ -319,35 +314,6 @@ class Metrics:
 _active_metrics: Metrics | None = None
 
 
-def _build_metric_reader(config: MetricsConfig) -> MetricReader:
-    if isinstance(config, OtlpMetricsConfig):
-        endpoint = config.resolved_metrics_endpoint()
-        logger.info("OTel: exporting metrics via %s to %s", config.protocol, endpoint)
-        return PeriodicExportingMetricReader(_build_metric_exporter(config))
-
-    from opentelemetry.exporter.prometheus import PrometheusMetricReader
-
-    logger.info("OTel: exposing metrics on the Prometheus registry for pull")
-    return PrometheusMetricReader()
-
-
-def _build_metric_exporter(config: OtlpMetricsConfig) -> MetricExporter:
-    endpoint = config.resolved_metrics_endpoint()
-
-    if config.protocol == OtelProtocol.GRPC:
-        from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import (
-            OTLPMetricExporter as GrpcExporter,
-        )
-
-        return GrpcExporter(endpoint=endpoint, headers=config.resolved_headers())
-
-    from opentelemetry.exporter.otlp.proto.http.metric_exporter import (
-        OTLPMetricExporter as HttpExporter,
-    )
-
-    return HttpExporter(endpoint=endpoint, headers=config.resolved_headers())
-
-
 def setup_metrics(
     config: MetricsConfig,
     *,
@@ -373,7 +339,7 @@ def setup_metrics(
 
     owns_provider = meter_provider is None
     if meter_provider is None:
-        reader = _build_metric_reader(config)
+        reader = config.build_metric_reader()
         meter_provider = MeterProvider(
             metric_readers=[reader],
             resource=Resource.create(

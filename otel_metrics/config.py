@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import logging
+from abc import abstractmethod
 from enum import StrEnum, auto
-from typing import Annotated, Literal, TypeVar
+from typing import TYPE_CHECKING, Annotated, Literal, TypeVar
 
 from opentelemetry.util.re import parse_env_headers
 from pydantic import (
@@ -14,6 +16,9 @@ from pydantic import (
     field_validator,
 )
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+if TYPE_CHECKING:
+    from opentelemetry.sdk.metrics.export import MetricExporter, MetricReader
 
 
 def _validate_non_blank(value: str) -> str:
@@ -38,6 +43,8 @@ V = TypeVar("V")
 # validator sits on the optional union so a blank value can resolve to None
 # SecretStr values keep API keys out of repr() and model_dump_json()
 Map = Annotated[dict[str, V] | None, NoDecode, BeforeValidator(_parse_env_map)]
+
+logger = logging.getLogger(__name__)
 
 
 class OtelProtocol(StrEnum):
@@ -82,6 +89,10 @@ class MetricsConfig(BaseSettings):
     )
     metric_prefix: str | None = None
 
+    @abstractmethod
+    def build_metric_reader(self) -> MetricReader:
+        """Return the metric reader this export mode describes."""
+
     @field_validator("metric_prefix", mode="after")
     @classmethod
     def _normalise_metric_prefix(cls, value: str | None) -> str | None:
@@ -110,6 +121,29 @@ class OtlpMetricsConfig(MetricsConfig):
     )
     exporter: Literal[MetricsExporter.OTLP] = MetricsExporter.OTLP
 
+    def build_metric_reader(self) -> MetricReader:
+        from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+
+        endpoint = self.resolved_metrics_endpoint()
+        logger.info("OTel: exporting metrics via %s to %s", self.protocol, endpoint)
+        return PeriodicExportingMetricReader(self._build_metric_exporter())
+
+    def _build_metric_exporter(self) -> MetricExporter:
+        endpoint = self.resolved_metrics_endpoint()
+
+        if self.protocol == OtelProtocol.GRPC:
+            from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import (
+                OTLPMetricExporter as GrpcExporter,
+            )
+
+            return GrpcExporter(endpoint=endpoint, headers=self.resolved_headers())
+
+        from opentelemetry.exporter.otlp.proto.http.metric_exporter import (
+            OTLPMetricExporter as HttpExporter,
+        )
+
+        return HttpExporter(endpoint=endpoint, headers=self.resolved_headers())
+
     def resolved_metrics_endpoint(self) -> str:
         """Return the full metrics endpoint URL based on protocol."""
         base = self.endpoint.rstrip("/")
@@ -132,6 +166,12 @@ class PrometheusMetricsConfig(MetricsConfig):
     """
 
     exporter: Literal[MetricsExporter.PROMETHEUS] = MetricsExporter.PROMETHEUS
+
+    def build_metric_reader(self) -> MetricReader:
+        from opentelemetry.exporter.prometheus import PrometheusMetricReader
+
+        logger.info("OTel: exposing metrics on the Prometheus registry for pull")
+        return PrometheusMetricReader()
 
 
 AnyMetricsConfig = Annotated[
