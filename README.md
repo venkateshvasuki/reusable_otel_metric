@@ -121,34 +121,53 @@ A gauge emits nothing until its first `set`.
 
 ### Configuration
 
-`OtelConfig` is a pydantic-settings model. Values resolve from constructor args or environment variables:
+Metrics export configuration is type-driven. A `MetricsConfig` parent carries
+the settings every metrics exporter needs, with subclasses choosing push vs
+pull:
 
-| Field | Env var | Default |
-|-------|---------|---------|
-| `endpoint` | `OTEL_EXPORTER_OTLP_ENDPOINT` | *(required unless `metrics_exporter` is `prometheus`)* |
+| Class | Behavior | Endpoint |
+|-------|----------|----------|
+| `OtlpMetricsConfig` | Pushes over OTLP on a timer | `OTEL_EXPORTER_OTLP_ENDPOINT` *(required)* |
+| `PrometheusMetricsConfig` | Serves the default `prometheus_client` registry for a scraper to pull | *(no endpoint field)* |
+| `OtelConfig` (extends `OtlpMetricsConfig`) | Full OTLP config: OTLP push metrics plus the tracing pipeline | `OTEL_EXPORTER_OTLP_ENDPOINT` *(required)* |
+
+| Field (shared, all classes) | Env var | Default |
+|-----------------------------|---------|---------|
 | `service_name` | `OTEL_SERVICE_NAME` | *(required)* |
-| `protocol` | `OTEL_EXPORTER_OTLP_PROTOCOL` | `grpc` |
-| `metrics_exporter` | `OTEL_METRICS_EXPORTER` | `otlp` |
-| `headers` | `OTEL_EXPORTER_OTLP_HEADERS` | `None` |
 | `tags` | `OTEL_RESOURCE_ATTRIBUTES` | `None` |
 | `metric_prefix` | `OTEL_METRIC_PREFIX` | `None` (no prefix) |
 
+| Field (OTLP variants) | Env var | Default |
+|-----------------------|---------|---------|
+| `endpoint` | `OTEL_EXPORTER_OTLP_ENDPOINT` | *(required)* |
+| `protocol` | `OTEL_EXPORTER_OTLP_PROTOCOL` | `grpc` |
+| `headers` | `OTEL_EXPORTER_OTLP_HEADERS` | `None` |
+
 Supported protocols: `grpc`, `http/protobuf`.
 
-`metrics_exporter` chooses how metrics leave the process:
+Push vs pull is chosen by which config class is constructed — there is no
+separate exporter-switch environment variable. Each class still resolves its
+own settings from constructor args or environment variables. A pull-only
+service therefore configures no OTLP settings at all:
 
-- `otlp` (default) pushes metrics over OTLP to `endpoint` on a timer.
-- `prometheus` builds a pull reader that serves the default `prometheus_client`
-  registry, so a scraper (e.g. Prometheus scraping `/metrics` on the pod) can
-  collect them. In this mode `endpoint` is not required — but traces still
-  need it, so an endpoint-less config can only be used with `setup_metrics`.
+```python
+from otel_metrics import PrometheusMetricsConfig, setup_metrics
+
+metrics = setup_metrics(
+    PrometheusMetricsConfig(service_name="my-service", metric_prefix="myapp")
+)
+```
+
+`OtlpMetricsConfig` differs from `PrometheusMetricsConfig` by its required
+`endpoint`, so a pull-only service cannot be forced to set a fake OTLP
+destination, and an OTLP config cannot be constructed without one.
 
 `metric_prefix` is optional. When set, instrument names are prefixed with it
 (`myapp.request_count`). It is not derived from `service_name` automatically,
 because the OTel resource already carries `service.name`.
 
 `headers` accepts either a mapping or the OTLP `key=value,key2=value2` string form,
-and is forwarded to both the metrics and traces exporters. Values may be URL-encoded
+and is forwarded to the OTLP exporters. Values may be URL-encoded
 per the OTLP spec, but plain values are accepted too.
 
 Header values are held as `pydantic.SecretStr`, because they usually carry an API
