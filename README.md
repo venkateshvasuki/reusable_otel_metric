@@ -8,6 +8,12 @@ Reusable OpenTelemetry library: simplified wrappers around OTel metric instrumen
 pip install otel-metrics
 ```
 
+For Prometheus pull export, add the extra:
+
+```bash
+pip install "otel-metrics[prometheus]"
+```
+
 Or from a built wheel:
 
 ```bash
@@ -76,6 +82,39 @@ active.dec()
 `inc` adds and `dec` subtracts, both taking an optional amount and attributes.
 Negative amounts raise `ValueError` for counters and histograms.
 
+### Units and histogram buckets
+
+`up_down_counter`, `histogram` and `gauge` accept a `unit`:
+
+```python
+hist = metrics.histogram(
+    MyMetrics.CHECKPOINT_SECONDS,
+    description="Checkpoint duration",
+    unit="s",
+    buckets=[0.01, 0.1, 1, 10, 100],
+)
+```
+
+The Prometheus exporter appends a suffix derived from the unit to the exported
+name, so the example above scrapes as `checkpoint_seconds`. Timers always set
+`unit="ms"`, so a timer named `request_duration_ms` exports as
+`request_duration_ms_milliseconds`; name timers without the unit
+(`REQUEST_DURATION`) when exporting to Prometheus.
+
+`counter` takes no unit — it is strictly for counting, and the Prometheus
+exporter already names counters `..._total`. If a count carries a unit
+(such as accumulated seconds), put the unit in the name and use a histogram
+or an up/down counter instead.
+
+`histogram` and `timer` also accept explicit bucket boundaries, which override
+the OTel default buckets (0 to 10,000):
+
+```python
+timer = metrics.timer(MyMetrics.REQUEST_DURATION_MS, buckets=[1, 5, 10, 50, 100])
+```
+
+Timers always record milliseconds.
+
 ### Gauges
 
 A gauge keeps one value per attribute set:
@@ -92,25 +131,67 @@ A gauge emits nothing until its first `set`.
 
 ### Configuration
 
-`OtelConfig` is a pydantic-settings model. Values resolve from constructor args or environment variables:
+Metrics export configuration is type-driven. A `MetricsConfig` parent carries
+the settings every metrics exporter needs, with subclasses choosing push vs
+pull:
 
-| Field | Env var | Default |
-|-------|---------|---------|
-| `endpoint` | `OTEL_EXPORTER_OTLP_ENDPOINT` | *(required)* |
+| Class | Behavior | Endpoint |
+|-------|----------|----------|
+| `OtlpMetricsConfig` | Pushes over OTLP on a timer | `OTEL_EXPORTER_OTLP_ENDPOINT` *(required)* |
+| `PrometheusMetricsConfig` | Serves the default `prometheus_client` registry for a scraper to pull | *(no endpoint field)* |
+| `OtelConfig` (extends `OtlpMetricsConfig`) | Full OTLP config: OTLP push metrics plus the tracing pipeline | `OTEL_EXPORTER_OTLP_ENDPOINT` *(required)* |
+
+| Field (shared, all classes) | Env var | Default |
+|-----------------------------|---------|---------|
 | `service_name` | `OTEL_SERVICE_NAME` | *(required)* |
-| `protocol` | `OTEL_EXPORTER_OTLP_PROTOCOL` | `grpc` |
-| `headers` | `OTEL_EXPORTER_OTLP_HEADERS` | `None` |
 | `tags` | `OTEL_RESOURCE_ATTRIBUTES` | `None` |
 | `metric_prefix` | `OTEL_METRIC_PREFIX` | `None` (no prefix) |
 
+| Field (OTLP variants) | Env var | Default |
+|-----------------------|---------|---------|
+| `endpoint` | `OTEL_EXPORTER_OTLP_ENDPOINT` | *(required)* |
+| `protocol` | `OTEL_EXPORTER_OTLP_PROTOCOL` | `grpc` |
+| `headers` | `OTEL_EXPORTER_OTLP_HEADERS` | `None` |
+
 Supported protocols: `grpc`, `http/protobuf`.
+
+Push vs pull is chosen by which config class is constructed — there is no
+separate exporter-switch environment variable. Each class still resolves its
+own settings from constructor args or environment variables. A pull-only
+service therefore configures no OTLP settings at all:
+
+```python
+from otel_metrics import PrometheusMetricsConfig, setup_metrics
+
+metrics = setup_metrics(
+    PrometheusMetricsConfig(service_name="my-service", metric_prefix="myapp")
+)
+```
+
+Pull export needs the `prometheus` extra. The reader registers on the
+process-global `prometheus_client` registry, so expose that registry from your
+app — for example with `prometheus_client.start_http_server(9464)` or a
+`/metrics` route returning `generate_latest()`. Run at most one pull-based
+setup per process: a second live setup serves every series twice, and shutting
+one down unregisters only its own collector.
+
+Names are sanitized for Prometheus: dots become underscores, counters gain
+`_total`, and unit-bearing instruments gain a unit suffix. `metric_prefix`
+`myapp` plus `request_count` scrapes as `myapp_request_count_total`.
+
+`OtlpMetricsConfig` differs from `PrometheusMetricsConfig` by its required
+`endpoint`, so a pull-only service cannot be forced to set a fake OTLP
+destination, and an OTLP config cannot be constructed without one. The two
+variants are formally differentiated by an `Annotated` discriminated union on
+the `exporter` field (`AnyMetricsConfig`), so parsing a config mapping (e.g.
+from JSON) selects the correct subclass via the `exporter` key.
 
 `metric_prefix` is optional. When set, instrument names are prefixed with it
 (`myapp.request_count`). It is not derived from `service_name` automatically,
 because the OTel resource already carries `service.name`.
 
 `headers` accepts either a mapping or the OTLP `key=value,key2=value2` string form,
-and is forwarded to both the metrics and traces exporters. Values may be URL-encoded
+and is forwarded to the OTLP exporters. Values may be URL-encoded
 per the OTLP spec, but plain values are accepted too.
 
 Header values are held as `pydantic.SecretStr`, because they usually carry an API
@@ -191,12 +272,19 @@ setup_telemetry(config, *instrumentors)
 
 ### Testing
 
-Use `build_test_metrics()` to get a no-op `Metrics` instance for unit tests:
+Use `build_test_metrics()` to get a `Metrics` instance plus an in-memory reader
+for unit tests:
 
 ```python
 from otel_metrics import build_test_metrics
 
-metrics = build_test_metrics()
+m, reader = build_test_metrics()
+m.counter(MyMetrics.REQUEST_COUNT).inc(3)
+
+data = reader.get_metrics_data()
+metric = data.resource_metrics[0].scope_metrics[0].metrics[0]
+assert metric.name == "request_count"
+assert metric.data.data_points[0].value == 3
 ```
 
 ## Development

@@ -6,23 +6,20 @@ import atexit
 import logging
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from enum import StrEnum
 from types import TracebackType
-from typing import TYPE_CHECKING, Self
+from typing import TYPE_CHECKING, NamedTuple, Self
 
 from opentelemetry import metrics as otel_metrics
 from opentelemetry.metrics import CallbackOptions, Observation
 from opentelemetry.sdk.metrics import MeterProvider
-from opentelemetry.sdk.metrics.export import (
-    MetricExporter,
-    PeriodicExportingMetricReader,
-)
+from opentelemetry.sdk.metrics.export import InMemoryMetricReader, MetricReader
 from opentelemetry.sdk.resources import SERVICE_NAME, Resource
 from opentelemetry.util.types import AttributeValue, Attributes
 
-from otel_metrics.config import OtelConfig, OtelProtocol
+from otel_metrics.config import MetricsConfig
 
 if TYPE_CHECKING:
     from opentelemetry.metrics import (
@@ -205,12 +202,19 @@ class Metrics:
         *,
         provider: MeterProvider | None = None,
         owns_provider: bool = False,
+        reader: MetricReader | None = None,
     ) -> None:
         self._meter = meter
         self._prefix = prefix
         self._provider = provider
         self._owns_provider = owns_provider
+        self._reader = reader
         self._closed = False
+
+    @property
+    def reader(self) -> MetricReader | None:
+        """The reader created by :func:`setup_metrics`, if this instance owns one."""
+        return self._reader
 
     def __enter__(self) -> Self:
         return self
@@ -275,12 +279,21 @@ class Metrics:
         name: MetricName,
         description: str = "",
         unit: MetricUnit | str | None = None,
+        *,
+        buckets: Sequence[float] | None = None,
     ) -> Histogram:
+        """Create a histogram; ``buckets`` are advisory explicit boundaries."""
+        kwargs: dict[str, Sequence[float]] = {}
+        if buckets is not None:
+            if not buckets:
+                raise ValueError("buckets must not be empty")
+            kwargs["explicit_bucket_boundaries_advisory"] = buckets
         return Histogram(
             self._meter.create_histogram(
                 name=self._full_name(name),
                 description=description,
                 unit=str(unit) if unit else "",
+                **kwargs,
             )
         )
 
@@ -294,40 +307,39 @@ class Metrics:
             self._meter, self._full_name(name), description, str(unit) if unit else ""
         )
 
-    def timer(self, name: MetricName, description: str = "") -> Timer:
+    def timer(
+        self,
+        name: MetricName,
+        description: str = "",
+        *,
+        buckets: Sequence[float] | None = None,
+    ) -> Timer:
+        """Create a millisecond timer; ``buckets`` are advisory, in milliseconds."""
         return Timer(
-            self.histogram(name, description=description, unit=MetricUnit.MILLISECONDS)
+            self.histogram(
+                name,
+                description=description,
+                unit=MetricUnit.MILLISECONDS,
+                buckets=buckets,
+            )
         )
 
 
 _active_metrics: Metrics | None = None
 
 
-def _build_metric_exporter(config: OtelConfig) -> MetricExporter:
-    endpoint = config.resolved_metrics_endpoint()
-    logger.info("OTel: exporting metrics via %s to %s", config.protocol, endpoint)
-
-    if config.protocol == OtelProtocol.GRPC:
-        from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import (
-            OTLPMetricExporter as GrpcExporter,
-        )
-
-        return GrpcExporter(endpoint=endpoint, headers=config.resolved_headers())
-
-    from opentelemetry.exporter.otlp.proto.http.metric_exporter import (
-        OTLPMetricExporter as HttpExporter,
-    )
-
-    return HttpExporter(endpoint=endpoint, headers=config.resolved_headers())
-
-
 def setup_metrics(
-    config: OtelConfig,
+    config: MetricsConfig,
     *,
     meter_provider: MeterProvider | None = None,
     set_global: bool = True,
 ) -> Metrics:
     """Bootstrap the OTel metrics pipeline and return a Metrics factory.
+
+    The config selects push vs pull: an :class:`OtlpMetricsConfig` (or an
+    :class:`OtelConfig`, its subclass) pushes over OTLP on a timer; a
+    :class:`PrometheusMetricsConfig` serves the default ``prometheus_client``
+    registry for a scraper to pull.
 
     Reuses an existing provider when one was already configured with
     ``set_global=True``. Pass ``set_global=False`` for isolated or repeatable
@@ -341,7 +353,7 @@ def setup_metrics(
 
     owns_provider = meter_provider is None
     if meter_provider is None:
-        reader = PeriodicExportingMetricReader(_build_metric_exporter(config))
+        reader = config.build_metric_reader()
         meter_provider = MeterProvider(
             metric_readers=[reader],
             resource=Resource.create(
@@ -357,6 +369,7 @@ def setup_metrics(
         prefix=config.metric_prefix or "",
         provider=meter_provider,
         owns_provider=owns_provider,
+        reader=reader if owns_provider else None,
     )
     if owns_provider:
         atexit.register(metrics.shutdown)
@@ -365,8 +378,29 @@ def setup_metrics(
     return metrics
 
 
-def build_test_metrics() -> Metrics:
-    """Return a no-op Metrics instance for unit testing."""
-    provider = MeterProvider()
-    meter = provider.get_meter("test")
-    return Metrics(meter)
+class MetricsHarness(NamedTuple):
+    """Metrics factory plus the in-memory reader its provider feeds.
+
+    Unpack it and call ``reader.get_metrics_data()`` to assert on recorded
+    values::
+
+        harness = build_test_metrics()
+        harness.metrics.counter(MyMetrics.REQUEST_COUNT).inc(3)
+        data = harness.reader.get_metrics_data()
+    """
+
+    metrics: Metrics
+    reader: InMemoryMetricReader
+
+
+def build_test_metrics() -> MetricsHarness:
+    """Return a recording Metrics instance and the reader tests collect from."""
+    reader = InMemoryMetricReader()
+    provider = MeterProvider(metric_readers=[reader])
+    metrics = Metrics(
+        provider.get_meter("test"),
+        provider=provider,
+        owns_provider=True,
+        reader=reader,
+    )
+    return MetricsHarness(metrics, reader)

@@ -1,9 +1,19 @@
 """Tests for otel_metrics.config."""
 
-import pytest
-from pydantic import ValidationError
+from typing import get_args
 
-from otel_metrics.config import OtelConfig, OtelProtocol
+import pytest
+from pydantic import TypeAdapter, ValidationError
+
+from otel_metrics.config import (
+    AnyMetricsConfig,
+    MetricsConfig,
+    MetricsExporter,
+    OtelConfig,
+    OtelProtocol,
+    OtlpMetricsConfig,
+    PrometheusMetricsConfig,
+)
 
 
 class TestOtelProtocol:
@@ -12,6 +22,77 @@ class TestOtelProtocol:
 
     def test_http_protobuf_value(self):
         assert OtelProtocol.HTTP_PROTOBUF == "http/protobuf"
+
+
+class TestMetricsExporter:
+    def test_values(self):
+        assert MetricsExporter.OTLP == "otlp"
+        assert MetricsExporter.PROMETHEUS == "prometheus"
+
+
+class TestMetricsConfigVariants:
+    def test_prometheus_has_no_endpoint(self):
+        config = PrometheusMetricsConfig(service_name="svc")
+        assert "endpoint" not in PrometheusMetricsConfig.model_fields
+        assert config.exporter is MetricsExporter.PROMETHEUS
+
+    def test_otlp_requires_endpoint(self):
+        with pytest.raises(ValidationError):
+            OtlpMetricsConfig(service_name="svc")
+
+    def test_otel_config_requires_endpoint(self):
+        with pytest.raises(ValidationError):
+            OtelConfig(service_name="svc")
+
+    def test_blank_endpoint_rejected(self):
+        with pytest.raises(ValidationError, match="must not be blank"):
+            OtlpMetricsConfig(endpoint="   ", service_name="svc")
+
+
+class TestMetricsConfigUnion:
+    """The Annotated discriminator picks the subclass."""
+
+    @staticmethod
+    def _parse(value: dict) -> object:
+        return TypeAdapter(AnyMetricsConfig).validate_python(value)
+
+    def test_prometheus_branch(self):
+        config = self._parse({"exporter": "prometheus", "service_name": "svc"})
+        assert isinstance(config, PrometheusMetricsConfig)
+
+    def test_otlp_branch(self):
+        config = self._parse(
+            {"exporter": "otlp", "service_name": "svc", "endpoint": "http://x"}
+        )
+        assert isinstance(config, OtlpMetricsConfig)
+
+    def test_unknown_exporter_rejected(self):
+        with pytest.raises(ValidationError):
+            self._parse({"exporter": "kafka", "service_name": "svc"})
+
+    def test_json_parsing_selects_the_prometheus_branch(self):
+        config = TypeAdapter(AnyMetricsConfig).validate_json(
+            '{"exporter": "prometheus", "service_name": "svc"}'
+        )
+        assert isinstance(config, PrometheusMetricsConfig)
+
+    def test_union_members(self):
+        (union, _) = get_args(AnyMetricsConfig)
+        assert set(get_args(union)) == {OtlpMetricsConfig, PrometheusMetricsConfig}
+
+
+class TestPrometheusConfigFromEnv:
+    def test_from_env_vars(self, monkeypatch):
+        monkeypatch.setenv("OTEL_SERVICE_NAME", "env-pull")
+        monkeypatch.setenv("OTEL_METRIC_PREFIX", "myapp")
+        config = PrometheusMetricsConfig()
+        assert config.service_name == "env-pull"
+        assert config.metric_prefix == "myapp"
+        assert config.exporter is MetricsExporter.PROMETHEUS
+
+    def test_parent_is_abstract(self):
+        with pytest.raises(TypeError, match="abstract"):
+            MetricsConfig(service_name="svc")
 
 
 class TestOtelConfigConstruction:
