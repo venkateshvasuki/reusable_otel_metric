@@ -211,6 +211,11 @@ class Metrics:
         self._reader = reader
         self._closed = False
 
+    @property
+    def reader(self) -> MetricReader | None:
+        """The reader created by :func:`setup_metrics`, if this instance owns one."""
+        return self._reader
+
     def __enter__(self) -> Self:
         return self
 
@@ -274,14 +279,21 @@ class Metrics:
         name: MetricName,
         description: str = "",
         unit: MetricUnit | str | None = None,
+        *,
         buckets: Sequence[float] | None = None,
     ) -> Histogram:
+        """Create a histogram; ``buckets`` are advisory explicit boundaries."""
+        kwargs: dict[str, Sequence[float]] = {}
+        if buckets is not None:
+            if not buckets:
+                raise ValueError("buckets must not be empty")
+            kwargs["explicit_bucket_boundaries_advisory"] = buckets
         return Histogram(
             self._meter.create_histogram(
                 name=self._full_name(name),
                 description=description,
                 unit=str(unit) if unit else "",
-                explicit_bucket_boundaries_advisory=buckets,
+                **kwargs,
             )
         )
 
@@ -299,8 +311,10 @@ class Metrics:
         self,
         name: MetricName,
         description: str = "",
+        *,
         buckets: Sequence[float] | None = None,
     ) -> Timer:
+        """Create a millisecond timer; ``buckets`` are advisory, in milliseconds."""
         return Timer(
             self.histogram(
                 name,
@@ -364,24 +378,29 @@ def setup_metrics(
     return metrics
 
 
-class TestMetrics(NamedTuple):
+class MetricsHarness(NamedTuple):
     """Metrics factory plus the in-memory reader its provider feeds.
 
     Unpack it and call ``reader.get_metrics_data()`` to assert on recorded
     values::
 
-        test_metrics = build_test_metrics()
-        test_metrics.metrics.counter(MyMetrics.REQUEST_COUNT).inc(3)
-        data = test_metrics.reader.get_metrics_data()
+        harness = build_test_metrics()
+        harness.metrics.counter(MyMetrics.REQUEST_COUNT).inc(3)
+        data = harness.reader.get_metrics_data()
     """
 
     metrics: Metrics
     reader: InMemoryMetricReader
 
 
-def build_test_metrics() -> TestMetrics:
-    """Return a no-op Metrics instance with a reader tests can collect from."""
+def build_test_metrics() -> MetricsHarness:
+    """Return a recording Metrics instance and the reader tests collect from."""
     reader = InMemoryMetricReader()
     provider = MeterProvider(metric_readers=[reader])
-    meter = provider.get_meter("test")
-    return TestMetrics(Metrics(meter), reader)
+    metrics = Metrics(
+        provider.get_meter("test"),
+        provider=provider,
+        owns_provider=True,
+        reader=reader,
+    )
+    return MetricsHarness(metrics, reader)

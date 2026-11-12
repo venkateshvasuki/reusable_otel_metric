@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 from enum import StrEnum, auto
 from typing import TYPE_CHECKING, Annotated, Literal, TypeVar
 
@@ -67,7 +67,7 @@ class MetricsExporter(StrEnum):
     PROMETHEUS = auto()
 
 
-class MetricsConfig(BaseSettings):
+class MetricsConfig(BaseSettings, ABC):
     """Configuration shared by every metrics exporter.
 
     Construct a subclass directly: :class:`OtlpMetricsConfig` pushes over OTLP
@@ -163,12 +163,23 @@ class PrometheusMetricsConfig(MetricsConfig):
 
     There is no endpoint field: the scraper addresses the pod, not the other
     way around, so a pull-only service configures no OTLP settings at all.
+
+    Requires the ``prometheus`` extra (``pip install 'otel-metrics[prometheus]'``).
+    The reader registers on the process-global ``prometheus_client`` registry,
+    so run at most one pull-based setup per process: a second one serves the
+    same series twice. Shutting the first one down unregisters it.
     """
 
     exporter: Literal[MetricsExporter.PROMETHEUS] = MetricsExporter.PROMETHEUS
 
     def build_metric_reader(self) -> MetricReader:
-        from opentelemetry.exporter.prometheus import PrometheusMetricReader
+        try:
+            from opentelemetry.exporter.prometheus import PrometheusMetricReader
+        except ImportError as exc:
+            raise ImportError(
+                "Prometheus metrics export requires the 'prometheus' extra: "
+                "pip install 'otel-metrics[prometheus]'"
+            ) from exc
 
         logger.info("OTel: exposing metrics on the Prometheus registry for pull")
         return PrometheusMetricReader()

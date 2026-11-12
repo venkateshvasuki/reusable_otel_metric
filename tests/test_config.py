@@ -7,6 +7,7 @@ from pydantic import TypeAdapter, ValidationError
 
 from otel_metrics.config import (
     AnyMetricsConfig,
+    MetricsConfig,
     MetricsExporter,
     OtelConfig,
     OtelProtocol,
@@ -69,9 +70,29 @@ class TestMetricsConfigUnion:
         with pytest.raises(ValidationError):
             self._parse({"exporter": "kafka", "service_name": "svc"})
 
+    def test_json_parsing_selects_the_prometheus_branch(self):
+        config = TypeAdapter(AnyMetricsConfig).validate_json(
+            '{"exporter": "prometheus", "service_name": "svc"}'
+        )
+        assert isinstance(config, PrometheusMetricsConfig)
+
     def test_union_members(self):
         (union, _) = get_args(AnyMetricsConfig)
         assert set(get_args(union)) == {OtlpMetricsConfig, PrometheusMetricsConfig}
+
+
+class TestPrometheusConfigFromEnv:
+    def test_from_env_vars(self, monkeypatch):
+        monkeypatch.setenv("OTEL_SERVICE_NAME", "env-pull")
+        monkeypatch.setenv("OTEL_METRIC_PREFIX", "myapp")
+        config = PrometheusMetricsConfig()
+        assert config.service_name == "env-pull"
+        assert config.metric_prefix == "myapp"
+        assert config.exporter is MetricsExporter.PROMETHEUS
+
+    def test_parent_is_abstract(self):
+        with pytest.raises(TypeError, match="abstract"):
+            MetricsConfig(service_name="svc")
 
 
 class TestOtelConfigConstruction:

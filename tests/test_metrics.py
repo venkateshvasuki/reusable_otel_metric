@@ -257,8 +257,27 @@ class TestHistogram:
             name="payload_size",
             description="",
             unit="",
-            explicit_bucket_boundaries_advisory=None,
         )
+
+    def test_empty_buckets_rejected(self):
+        mock_meter = MagicMock()
+        with pytest.raises(ValueError, match="must not be empty"):
+            Metrics(mock_meter).histogram(SampleMetrics.PAYLOAD_SIZE, buckets=[])
+        with pytest.raises(ValueError, match="must not be empty"):
+            Metrics(mock_meter).timer(SampleMetrics.REQUEST_DURATION_MS, buckets=[])
+        assert mock_meter.create_histogram.call_args_list == []
+
+    def test_buckets_reach_the_exported_data(self):
+        reader = InMemoryMetricReader()
+        provider = MeterProvider(metric_readers=[reader])
+        metrics = Metrics(provider.get_meter("test"))
+        metrics.histogram(SampleMetrics.PAYLOAD_SIZE, buckets=[1, 2, 5]).record(3)
+
+        data = reader.get_metrics_data()
+        assert data is not None
+        metric = data.resource_metrics[0].scope_metrics[0].metrics[0]
+        assert metric.name == "payload_size"
+        assert metric.data.data_points[0].explicit_bounds == (1, 2, 5)
 
 
 # --- Gauge -------------------------------------------------------------------
@@ -451,6 +470,11 @@ class TestBuildTestMetrics:
         assert gauge.get() == 5.0
         m.up_down_counter(SampleMetrics.ACTIVE_CONNECTIONS).dec()
 
+    def test_exposes_reader_and_provider(self):
+        m, reader = build_test_metrics()
+        assert m.reader is reader
+        assert m.force_flush() is True
+
     def test_reader_sees_counter_count(self):
         m, reader = build_test_metrics()
         m.counter(SampleMetrics.REQUEST_COUNT).inc(3, attributes={"route": "/x"})
@@ -592,11 +616,29 @@ class TestSetupMetrics:
     def test_prometheus_pull_uses_pull_reader(self):
         config = PrometheusMetricsConfig(service_name="pull-svc")
         with setup_metrics(config, set_global=False) as metrics:
-            assert isinstance(metrics._reader, PrometheusMetricReader)
+            assert isinstance(metrics.reader, PrometheusMetricReader)
 
     def test_otlp_push_uses_periodic_reader(self):
         with setup_metrics(self._config(), set_global=False) as metrics:
-            assert isinstance(metrics._reader, PeriodicExportingMetricReader)
+            assert isinstance(metrics.reader, PeriodicExportingMetricReader)
+
+    def test_reader_is_none_for_an_injected_provider(self):
+        provider = MeterProvider()
+        metrics = setup_metrics(
+            self._config(), meter_provider=provider, set_global=False
+        )
+        assert metrics.reader is None
+        metrics.shutdown()
+        provider.shutdown()
+
+    def test_prometheus_appends_the_unit_to_the_name(self):
+        config = PrometheusMetricsConfig(
+            service_name="pull-svc", metric_prefix="unitcheck"
+        )
+        with setup_metrics(config, set_global=False) as metrics:
+            metrics.timer(SampleMetrics.REQUEST_DURATION_MS).record(TimestampNS.now())
+            output = generate_latest().decode()
+        assert "unitcheck_request_duration_ms_milliseconds" in output
 
 
 # --- exported metrics --------------------------------------------------------
